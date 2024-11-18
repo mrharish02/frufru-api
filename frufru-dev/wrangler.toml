@@ -1,0 +1,13 @@
+name = "frufru-dev"
+main = "src/index.js"
+compatibility_date = "2024-11-08"
+workers_dev = true
+
+[[d1_databases]]
+binding = "DB"
+database_id = "652ceb96-b1a4-4c06-9cdc-03e802f36181"
+database_name = "frufru"
+
+[[r2_buckets]]
+binding = "FILE_BUCKET"
+bucket_name = "furufuru-dev"

@@ -696,6 +696,391 @@ app.post('/masterData', async (c) => {
     return c.json({ message: 'Error processing request', error }, 500);
   }
 });
+app.options('/productMaster', async (c) => {
+  // Set CORS headers for preflight request
+  c.header('Access-Control-Allow-Origin', '*');
+  c.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  c.header('Access-Control-Allow-Headers', '*');
+  return c.json({}, 200);
+});
+app.post('/productMaster', async (c) => {
+  // Add CORS headers
+  c.header('Access-Control-Allow-Origin', '*');
+  c.header('Access-Control-Allow-Methods', 'POST');
+  c.header('Access-Control-Allow-Headers', '*');
+
+  console.log("inside master data request")
+
+  try {
+    console.log("inside try block")
+    const body = await c.req.json();
+    // const data = body.data;  // JSON array of masterdata entries
+    const {formattedData} = body;
+    const data = formattedData
+    console.log("data",formattedData,data)
+
+    if (!data || !Array.isArray(data) || data.length === 0) {
+      return c.json({ message: 'Invalid or missing data array' }, 400);
+    }
+
+    // Generate a filename with the current timestamp
+    // const timestamp = new Date().toISOString().replace(/[:.]/g, '-'); // Format timestamp for file
+    // const fileName = `masterdata_${timestamp}`;
+    // const fileSize = 2;
+    // const uploadStatus = "Success";
+
+    // Insert entry into masterdatametadata
+    // const metadataResult =  await c.env.DB.prepare(`
+    //   INSERT INTO mastermetadata (fileName, uploadDate, uploadStatus, fileSize)
+    //   VALUES (?, CURRENT_TIMESTAMP, ?, ?)
+    // `)
+    // .bind(fileName, uploadStatus, fileSize)
+    // .run();
+
+
+    // if (!metadataResult.success) {
+    //   return c.json({ message: 'Failed to insert metadata', error: metadataResult.error }, 500);
+    // }
+
+    // Prepare the SQL for inserting multiple entries into masterdata
+    const insertStatement = c.env.DB.prepare(`
+      INSERT INTO productMaster (
+        product_code, product_name, size, quality, rule001, rule002, rule003,
+    rule004, rule005, rule006, rule007, rule008
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    // Insert each item in the array with the filename reference
+    for (const item of data) {
+      const values = [
+        item.product_code, item.product_name, item.size, item.quality,
+        item.rule001, item.rule002, item.rule003, item.rule004,
+        item.rule005, item.rule006, item.rule007, item.rule008
+      ];
+
+      const result = await insertStatement.bind(...values).run();
+      if (!result.success) {
+        return c.json({ message: 'Failed to insert masterdata entry', error: result.error }, 500);
+      }
+    }
+
+    return c.json({ message: 'Masterdata entries inserted successfully!', fileName }, 200);
+  } catch (error) {
+    console.error('Error inserting data into masterdata:', error);
+    return c.json({ message: 'Error processing request', error }, 500);
+  }
+});
+app.options('/jfMaster', async (c) => {
+  // Set CORS headers for preflight request
+  c.header('Access-Control-Allow-Origin', '*');
+  c.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  c.header('Access-Control-Allow-Headers', '*');
+  return c.json({}, 200);
+});
+app.post('/jfMaster', async (c) => {
+  // Add CORS headers
+  c.header('Access-Control-Allow-Origin', '*');
+  c.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  c.header('Access-Control-Allow-Headers', '*');
+
+  console.log("inside master data request")
+
+  try {
+    console.log("inside try block")
+    const body = await c.req.json();
+    // const data = body.data;  // JSON array of masterdata entries
+    const {formattedData} = body;
+    const data = formattedData
+    console.log("data",formattedData,data)
+
+    if (!data || !Array.isArray(data) || data.length === 0) {
+      return c.json({ message: 'Invalid or missing data array' }, 400);
+    }
+
+    // Generate a filename with the current timestamp
+    // const timestamp = new Date().toISOString().replace(/[:.]/g, '-'); // Format timestamp for file
+    // const fileName = `masterdata_${timestamp}`;
+    // const fileSize = 2;
+    // const uploadStatus = "Success";
+
+    // Insert entry into masterdatametadata
+    // const metadataResult =  await c.env.DB.prepare(`
+    //   INSERT INTO mastermetadata (fileName, uploadDate, uploadStatus, fileSize)
+    //   VALUES (?, CURRENT_TIMESTAMP, ?, ?)
+    // `)
+    // .bind(fileName, uploadStatus, fileSize)
+    // .run();
+
+
+    // if (!metadataResult.success) {
+    //   return c.json({ message: 'Failed to insert metadata', error: metadataResult.error }, 500);
+    // }
+
+    // Prepare the SQL for inserting multiple entries into masterdata
+    const insertStatement = c.env.DB.prepare(`
+      INSERT INTO jfMaster (
+    arrival_time, location, category
+  ) VALUES (?, ?, ?)
+    `);
+
+    // Insert each item in the array with the filename reference
+    for (const item of data) {
+      const values = [
+        item.arrival_time, item.location, item.category
+      ];
+
+      const result = await insertStatement.bind(...values).run();
+      if (!result.success) {
+        return c.json({ message: 'Failed to insert masterdata entry', error: result.error }, 500);
+      }
+    }
+
+    return c.json({ message: 'Masterdata entries inserted successfully!', fileName }, 200);
+  } catch (error) {
+    console.error('Error inserting data into masterdata:', error);
+    return c.json({ message: 'Error processing request', error }, 500);
+  }
+});
+
+app.options('/shippingMaster', async (c) => {
+  // Set CORS headers for preflight request
+  c.header('Access-Control-Allow-Origin', '*');
+  c.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  c.header('Access-Control-Allow-Headers', '*');
+  return c.json({}, 200);
+});
+app.post('/shippingMaster', async (c) => {
+  // Add CORS headers
+  c.header('Access-Control-Allow-Origin', '*');
+  c.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  c.header('Access-Control-Allow-Headers', '*');
+
+  console.log("inside master data request")
+
+  try {
+    console.log("inside try block")
+    const body = await c.req.json();
+    // const data = body.data;  // JSON array of masterdata entries
+    const {formattedData} = body;
+    const data = formattedData
+    console.log("data",formattedData,data)
+
+    if (!data || !Array.isArray(data) || data.length === 0) {
+      return c.json({ message: 'Invalid or missing data array' }, 400);
+    }
+
+    // Generate a filename with the current timestamp
+    // const timestamp = new Date().toISOString().replace(/[:.]/g, '-'); // Format timestamp for file
+    // const fileName = `masterdata_${timestamp}`;
+    // const fileSize = 2;
+    // const uploadStatus = "Success";
+
+    // Insert entry into masterdatametadata
+    // const metadataResult =  await c.env.DB.prepare(`
+    //   INSERT INTO mastermetadata (fileName, uploadDate, uploadStatus, fileSize)
+    //   VALUES (?, CURRENT_TIMESTAMP, ?, ?)
+    // `)
+    // .bind(fileName, uploadStatus, fileSize)
+    // .run();
+
+
+    // if (!metadataResult.success) {
+    //   return c.json({ message: 'Failed to insert metadata', error: metadataResult.error }, 500);
+    // }
+
+    // Prepare the SQL for inserting multiple entries into masterdata
+    const insertStatement = c.env.DB.prepare(`
+      INSERT INTO shippingMaster (
+    FarmCode, FarmName, 北海道, 青森, 岩手, 宮城, 秋田, 山形, 福島, 茨城, 
+    栃木, 群馬, 埼玉, 千葉, 東京, 神奈川, 新潟, 富山, 石川, 福井, 山梨, 長野, 
+    岐阜, 静岡, 愛知, 三重, 滋賀, 京都, 大阪, 兵庫, 奈良, 和歌山, 鳥取, 島根, 
+    岡山, 広島, 山口, 徳島, 香川, 愛媛, 高知, 福岡, 佐賀, 長崎, 熊本, 大分, 
+    宮崎, 鹿児島, 沖縄
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`);
+
+    // Insert each item in the array with the filename reference
+    for (const item of data) {
+      const values = [
+        item.FarmCode, item.FarmName, item.北海道, item.青森, item.岩手, item.宮城,
+    item.秋田, item.山形, item.福島, item.茨城, item.栃木, item.群馬, item.埼玉,
+    item.千葉, item.東京, item.神奈川, item.新潟, item.富山, item.石川, item.福井,
+    item.山梨, item.長野, item.岐阜, item.静岡, item.愛知, item.三重, item.滋賀,
+    item.京都, item.大阪, item.兵庫, item.奈良, item.和歌山, item.鳥取, item.島根,
+    item.岡山, item.広島, item.山口, item.徳島, item.香川, item.愛媛, item.高知,
+    item.福岡, item.佐賀, item.長崎, item.熊本, item.大分, item.宮崎, item.鹿児島,
+    item.沖縄
+      ];
+
+      const result = await insertStatement.bind(...values).run();
+      if (!result.success) {
+        return c.json({ message: 'Failed to insert masterdata entry', error: result.error }, 500);
+      }
+    }
+
+    return c.json({ message: 'Masterdata entries inserted successfully!', fileName }, 200);
+  } catch (error) {
+    console.error('Error inserting data into masterdata:', error);
+    return c.json({ message: 'Error processing request', error }, 500);
+  }
+});
+
+app.options('/heightMaster', async (c) => {
+  // Set CORS headers for preflight request
+  c.header('Access-Control-Allow-Origin', '*');
+  c.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  c.header('Access-Control-Allow-Headers', '*');
+  return c.json({}, 200);
+});
+app.post('/heightMaster', async (c) => {
+  // Add CORS headers
+  c.header('Access-Control-Allow-Origin', '*');
+  c.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  c.header('Access-Control-Allow-Headers', '*');
+
+  console.log("inside master data request")
+
+  try {
+    console.log("inside try block")
+    const body = await c.req.json();
+    // const data = body.data;  // JSON array of masterdata entries
+    const {formattedData} = body;
+    const data = formattedData
+    console.log("data",formattedData,data)
+
+    if (!data || !Array.isArray(data) || data.length === 0) {
+      return c.json({ message: 'Invalid or missing data array' }, 400);
+    }
+
+    // Generate a filename with the current timestamp
+    // const timestamp = new Date().toISOString().replace(/[:.]/g, '-'); // Format timestamp for file
+    // const fileName = `masterdata_${timestamp}`;
+    // const fileSize = 2;
+    // const uploadStatus = "Success";
+
+    // Insert entry into masterdatametadata
+    // const metadataResult =  await c.env.DB.prepare(`
+    //   INSERT INTO mastermetadata (fileName, uploadDate, uploadStatus, fileSize)
+    //   VALUES (?, CURRENT_TIMESTAMP, ?, ?)
+    // `)
+    // .bind(fileName, uploadStatus, fileSize)
+    // .run();
+
+
+    // if (!metadataResult.success) {
+    //   return c.json({ message: 'Failed to insert metadata', error: metadataResult.error }, 500);
+    // }
+
+    // Prepare the SQL for inserting multiple entries into masterdata
+    const insertStatement = c.env.DB.prepare(`
+        INSERT INTO heightMaster (
+    FarmCode, FarmName, SizeXXcm, 優先, S, M, 訳あり小, L, size2L, size3L, size4L, 訳あり中,
+    size5L, 訳あり大
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`);
+
+    // Insert each item in the array with the filename reference
+    for (const item of data) {
+      const values = [
+        item.FarmCode, item.FarmName, item.SizeXXcm, item.優先, item.S, item.M, item.訳あり小,
+        item.L, item.size2L, item.size3L, item.size4L, item.訳あり中, item.size5L, item.訳あり大
+      ];
+
+      const result = await insertStatement.bind(...values).run();
+      if (!result.success) {
+        return c.json({ message: 'Failed to insert masterdata entry', error: result.error }, 500);
+      }
+    }
+
+    return c.json({ message: 'Masterdata entries inserted successfully!', fileName }, 200);
+  } catch (error) {
+    console.error('Error inserting data into masterdata:', error);
+    return c.json({ message: 'Error processing request', error }, 500);
+  }
+});
+
+app.options('/shippingDaysMaster', async (c) => {
+  // Set CORS headers for preflight request
+  c.header('Access-Control-Allow-Origin', '*');
+  c.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  c.header('Access-Control-Allow-Headers', '*');
+  return c.json({}, 200);
+});
+app.post('/shippingDaysMaster', async (c) => {
+  // Add CORS headers
+  c.header('Access-Control-Allow-Origin', '*');
+  c.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  c.header('Access-Control-Allow-Headers', '*');
+
+  console.log("inside master data request")
+
+  try {
+    console.log("inside try block")
+    const body = await c.req.json();
+    // const data = body.data;  // JSON array of masterdata entries
+    const {formattedData} = body;
+    const data = formattedData
+    console.log("data",formattedData,data)
+
+    if (!data || !Array.isArray(data) || data.length === 0) {
+      return c.json({ message: 'Invalid or missing data array' }, 400);
+    }
+
+    // Generate a filename with the current timestamp
+    // const timestamp = new Date().toISOString().replace(/[:.]/g, '-'); // Format timestamp for file
+    // const fileName = `masterdata_${timestamp}`;
+    // const fileSize = 2;
+    // const uploadStatus = "Success";
+
+    // Insert entry into masterdatametadata
+    // const metadataResult =  await c.env.DB.prepare(`
+    //   INSERT INTO mastermetadata (fileName, uploadDate, uploadStatus, fileSize)
+    //   VALUES (?, CURRENT_TIMESTAMP, ?, ?)
+    // `)
+    // .bind(fileName, uploadStatus, fileSize)
+    // .run();
+
+
+    // if (!metadataResult.success) {
+    //   return c.json({ message: 'Failed to insert metadata', error: metadataResult.error }, 500);
+    // }
+
+    // Prepare the SQL for inserting multiple entries into masterdata
+    const insertStatement = c.env.DB.prepare(`
+        INSERT INTO shippingDaysMaster (
+    FarmCode, FarmName, SizeXXcm, 北海道, 青森, 岩手, 宮城, 秋田, 山形, 福島, 茨城, 
+    栃木, 群馬, 埼玉, 千葉, 東京, 神奈川, 新潟, 富山, 石川, 福井, 山梨, 長野, 
+    岐阜, 静岡, 愛知, 三重, 滋賀, 京都, 大阪, 兵庫, 奈良, 和歌山, 鳥取, 島根, 
+    岡山, 広島, 山口, 徳島, 香川, 愛媛, 高知, 福岡, 佐賀, 長崎, 熊本, 大分, 
+    宮崎, 鹿児島, 沖縄
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`);
+
+    // Insert each item in the array with the filename reference
+    for (const item of data) {
+      const values = [
+        item.FarmCode, item.FarmName, item.SizeXXcm, item.北海道, item.青森, item.岩手, item.宮城,
+        item.秋田, item.山形, item.福島, item.茨城, item.栃木, item.群馬, item.埼玉, item.千葉,
+        item.東京, item.神奈川, item.新潟, item.富山, item.石川, item.福井, item.山梨, item.長野,
+        item.岐阜, item.静岡, item.愛知, item.三重, item.滋賀, item.京都, item.大阪, item.兵庫,
+        item.奈良, item.和歌山, item.鳥取, item.島根, item.岡山, item.広島, item.山口, item.徳島,
+        item.香川, item.愛媛, item.高知, item.福岡, item.佐賀, item.長崎, item.熊本, item.大分,
+        item.宮崎, item.鹿児島, item.沖縄
+      ];
+
+      const result = await insertStatement.bind(...values).run();
+      if (!result.success) {
+        return c.json({ message: 'Failed to insert masterdata entry', error: result.error }, 500);
+      }
+    }
+
+    return c.json({ message: 'Masterdata entries inserted successfully!', fileName }, 200);
+  } catch (error) {
+    console.error('Error inserting data into masterdata:', error);
+    return c.json({ message: 'Error processing request', error }, 500);
+  }
+});
+
 
 app.options('/getUploadedMasterData', async (c) => {
   c.header('Access-Control-Allow-Origin', '*');
