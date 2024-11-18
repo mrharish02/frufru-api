@@ -6,7 +6,8 @@
   },
   "dependencies": {
     "exceljs": "^4.4.0",
-    "hono": "^4.6.9"
+    "hono": "^4.6.9",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20241022.0",
