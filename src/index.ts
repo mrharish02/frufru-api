@@ -706,7 +706,7 @@ app.options('/productMaster', async (c) => {
 app.post('/productMaster', async (c) => {
   // Add CORS headers
   c.header('Access-Control-Allow-Origin', '*');
-  c.header('Access-Control-Allow-Methods', 'POST');
+  c.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
   c.header('Access-Control-Allow-Headers', '*');
 
   console.log("inside master data request")
@@ -744,7 +744,7 @@ app.post('/productMaster', async (c) => {
 
     // Prepare the SQL for inserting multiple entries into masterdata
     const insertStatement = c.env.DB.prepare(`
-      INSERT INTO productMaster (
+      INSERT OR REPLACE INTO productMaster (
         product_code, product_name, size, quality, rule001, rule002, rule003,
     rule004, rule005, rule006, rule007, rule008
   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -764,7 +764,7 @@ app.post('/productMaster', async (c) => {
       }
     }
 
-    return c.json({ message: 'Masterdata entries inserted successfully!', fileName }, 200);
+    return c.json({ message: 'Masterdata entries inserted successfully!' }, 200);
   } catch (error) {
     console.error('Error inserting data into masterdata:', error);
     return c.json({ message: 'Error processing request', error }, 500);
@@ -835,7 +835,7 @@ app.post('/jfMaster', async (c) => {
       }
     }
 
-    return c.json({ message: 'Masterdata entries inserted successfully!', fileName }, 200);
+    return c.json({ message: 'Masterdata entries inserted successfully!' }, 200);
   } catch (error) {
     console.error('Error inserting data into masterdata:', error);
     return c.json({ message: 'Error processing request', error }, 500);
@@ -863,9 +863,10 @@ app.post('/shippingMaster', async (c) => {
     // const data = body.data;  // JSON array of masterdata entries
     const {formattedData} = body;
     const data = formattedData
-    console.log("data",formattedData,data)
+    console.log("data",data[0])
 
     if (!data || !Array.isArray(data) || data.length === 0) {
+      console.log("invalid shipping master data")
       return c.json({ message: 'Invalid or missing data array' }, 400);
     }
 
@@ -890,13 +891,13 @@ app.post('/shippingMaster', async (c) => {
 
     // Prepare the SQL for inserting multiple entries into masterdata
     const insertStatement = c.env.DB.prepare(`
-      INSERT INTO shippingMaster (
+      INSERT OR REPLACE INTO shippingMaster (
     FarmCode, FarmName, 北海道, 青森, 岩手, 宮城, 秋田, 山形, 福島, 茨城, 
     栃木, 群馬, 埼玉, 千葉, 東京, 神奈川, 新潟, 富山, 石川, 福井, 山梨, 長野, 
     岐阜, 静岡, 愛知, 三重, 滋賀, 京都, 大阪, 兵庫, 奈良, 和歌山, 鳥取, 島根, 
     岡山, 広島, 山口, 徳島, 香川, 愛媛, 高知, 福岡, 佐賀, 長崎, 熊本, 大分, 
     宮崎, 鹿児島, 沖縄
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 
     // Insert each item in the array with the filename reference
@@ -914,11 +915,13 @@ app.post('/shippingMaster', async (c) => {
 
       const result = await insertStatement.bind(...values).run();
       if (!result.success) {
+        console.log("failed to insert shipping master")
         return c.json({ message: 'Failed to insert masterdata entry', error: result.error }, 500);
       }
     }
+    console.log("successfully inserted shipping master")
 
-    return c.json({ message: 'Masterdata entries inserted successfully!', fileName }, 200);
+    return c.json({ message: 'Masterdata entries inserted successfully!' }, 200);
   } catch (error) {
     console.error('Error inserting data into masterdata:', error);
     return c.json({ message: 'Error processing request', error }, 500);
@@ -973,7 +976,7 @@ app.post('/heightMaster', async (c) => {
 
     // Prepare the SQL for inserting multiple entries into masterdata
     const insertStatement = c.env.DB.prepare(`
-        INSERT INTO heightMaster (
+        INSERT OR REPLACE INTO heightMaster (
     FarmCode, FarmName, SizeXXcm, 優先, S, M, 訳あり小, L, size2L, size3L, size4L, 訳あり中,
     size5L, 訳あり大
   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -983,7 +986,7 @@ app.post('/heightMaster', async (c) => {
     for (const item of data) {
       const values = [
         item.FarmCode, item.FarmName, item.SizeXXcm, item.優先, item.S, item.M, item.訳あり小,
-        item.L, item.size2L, item.size3L, item.size4L, item.訳あり中, item.size5L, item.訳あり大
+        item.L, item['2L'], item['3L'], item['4L'], item.訳あり中, item['5L'], item.訳あり大
       ];
 
       const result = await insertStatement.bind(...values).run();
@@ -992,7 +995,7 @@ app.post('/heightMaster', async (c) => {
       }
     }
 
-    return c.json({ message: 'Masterdata entries inserted successfully!', fileName }, 200);
+    return c.json({ message: 'Masterdata entries inserted successfully!' }, 200);
   } catch (error) {
     console.error('Error inserting data into masterdata:', error);
     return c.json({ message: 'Error processing request', error }, 500);
