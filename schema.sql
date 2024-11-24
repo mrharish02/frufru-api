@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS mastermetadata (
 );
 
 CREATE TABLE IF NOT EXISTS masterdata (
-    orderID VARCHAR(20),
+    orderID VARCHAR(20) PRIMARY KEY,
     companyName VARCHAR(255),
     zipCode VARCHAR(20),
     perfecture VARCHAR(100),
@@ -227,7 +227,7 @@ CREATE TABLE productMaster (
     PRIMARY KEY (product_code) 
 );
 CREATE TABLE jfMaster (arrival_time VARCHAR(50) NOT NULL, 
-    location VARCHAR(100) NOT NULL, 
+    location VARCHAR(100) NOT NULL PRIMARY KEY, 
     category CHAR(1) NOT NULL
 );
 
@@ -368,4 +368,40 @@ CREATE TABLE IF NOT EXISTS uploadedOrderData (
     fileId INTEGER,
     status TEXT,
     FOREIGN KEY (fileId) REFERENCES orderdata (id) ON DELETE CASCADE
+);
+
+CREATE TABLE shipmentavailable (
+    SystemUploadDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,        -- Unique identifier for each record
+    -- id INT DEFAULT 0,
+    farm_name VARCHAR(255) NOT NULL,           -- Name of the farm (農園名)
+    timestamp DATETIME NOT NULL,               -- Timestamp (タイムスタンプ)
+    shipment_status VARCHAR(50),               -- Shipment possible or not (出荷可能もしくは不可でしょうか？)
+    target_shipping_date DATE,                 -- Target shipping date (出荷対象日を入力してください。)
+    non_standard_large_boxes INT DEFAULT 0,    -- Number of non-standard large boxes (規格外（大）箱数)
+    non_standard_medium_boxes INT DEFAULT 0,   -- Number of non-standard medium boxes (規格外（中）箱数)
+    non_standard_small_boxes INT DEFAULT 0,    -- Number of non-standard small boxes (規格外（小）箱数)
+    three_la INT DEFAULT 0,                    -- 3LA box count
+    three_lb INT DEFAULT 0,                    -- 3LB box count
+    two_la INT DEFAULT 0,                      -- 2LA box count
+    two_lb INT DEFAULT 0,                      -- 2LB box count
+    la INT DEFAULT 0,                          -- LA box count
+    lb INT DEFAULT 0,                          -- LB box count
+    ma INT DEFAULT 0,                          -- MA box count
+    mb INT DEFAULT 0,                          -- MB box count
+    sa INT DEFAULT 0,                          -- SA box count
+    sb INT DEFAULT 0,
+    fileId INT,                                -- Foreign key referencing shipmentavailabledata
+    -- PRIMARY KEY (farm_name, timestamp),  
+    CONSTRAINT fk_file FOREIGN KEY (fileId) REFERENCES shipmentavailabledata (id) 
+        ON DELETE CASCADE                       -- Cascades delete if the referenced record is deleted
+        ON UPDATE CASCADE                       -- Updates references on fileId update
+);
+
+CREATE TABLE  shipmentavailabledata (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    fileName TEXT UNIQUE NOT NULL,
+    uploadDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    uploadStatus TEXT,
+    fileSize INTEGER
 );

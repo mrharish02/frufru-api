@@ -174,6 +174,7 @@ app.post('/uploadOrderData', async (c) => {
   function sheetToJsonUsingW(worksheet) {
     const result = [];
     const range = XLSX.utils.decode_range(worksheet['!ref']);
+    console.log(sheet)
 
     for (let R = range.s.r + 1; R <= range.e.r; ++R) {
       const row = {};
@@ -197,11 +198,11 @@ app.post('/uploadOrderData', async (c) => {
 
     const orders:any = [];
     jsonData.forEach((row) => {
-      const order = { SystemUploadDate: new Date().toISOString(), OrderDate: row['Order Date'] || null, OrderNo: row['Order No'] || null, ProductCode: row['Product Code'] || null, Quantity: row['Quantity'] || null, CustomerCode: row['Customer Code'] || null, Message: row['Message'] || null, DesiredDeliveryDate: row['Desired Delivery Date'] || null, DesiredDeliveryTime: row['Desired Delivery Time'] || null, fileId: fileId};
+      const order = { SystemUploadDate: new Date().toISOString(), OrderDate: row['Order Date'] || null, OrderNo: row['Order No.'] || null, ProductCode: row['Product code'] || null, Quantity: row['Quantity'] || null, CustomerCode: row['Customer code'] || null, Message: row['Message'] || null, DesiredDeliveryDate: row['Desired Delivery Date'] || null, DesiredDeliveryTime: row['Desired Delivery Time'] || null, fileId: fileId};
       orders.push(order);
     });
 
-    
+    console.log("orders",jsonData,orders)
 
     // Step 4: Insert all rows into `uploadedOrderData` table in bulk
     const insertPromises = orders.map(order => {
@@ -451,7 +452,7 @@ app.get('/getOrderData/:fileId', async (c) => {
 app.options('/ShipmentData', async (c) => {
   // Set CORS headers for preflight request
   c.header('Access-Control-Allow-Origin', '*');
-  c.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  c.header('Access-Control-Allow-Methods', 'DELETE, GET, POST, OPTIONS');
   c.header('Access-Control-Allow-Headers', '*');
   return c.json({}, 200);
 });
@@ -477,7 +478,7 @@ app.post('/ShipmentData', async (c) => {
 
     // Step 2: Insert file details into `orderdata` table
     const insertFileResult = await c.env.DB.prepare(`
-      INSERT INTO orderdata (fileName, uploadDate, uploadStatus, fileSize)
+      INSERT INTO shipmentavailabledata (fileName, uploadDate, uploadStatus, fileSize)
       VALUES (?, CURRENT_TIMESTAMP, ?, ?)
       RETURNING id, fileName, uploadDate, uploadStatus, fileSize
     `)
@@ -485,7 +486,7 @@ app.post('/ShipmentData', async (c) => {
     .run();
 
     if (!insertFileResult.success) {
-      return c.json({ message: "Failed to insert file data", error: insertFileResult.error }, 500);
+      return c.json({ message: "Failed to insert file shipment available data", error: insertFileResult.error }, 500);
     }
 
     // Get the fileId of the newly inserted file
@@ -520,46 +521,81 @@ app.post('/ShipmentData', async (c) => {
   }
   const jsonData = sheetToJsonUsingW(sheet);
 
-    const orders:any = [];
-    jsonData.forEach((row) => {
-      const order = { SystemUploadDate: new Date().toISOString(), OrderDate: row['Order Date'] || null, OrderNo: row['Order No'] || null, ProductCode: row['Product Code'] || null, Quantity: row['Quantity'] || null, CustomerCode: row['Customer Code'] || null, Message: row['Message'] || null, DesiredDeliveryDate: row['Desired Delivery Date'] || null, DesiredDeliveryTime: row['Desired Delivery Time'] || null, fileId: fileId};
-      orders.push(order);
-    });
+  const shipments: any = [];
+  jsonData.forEach((row) => {
+    const shipment = {
+      farm_name: row['農園名'] || null, // "Farm Name"
+      timestamp: new Date().toISOString(), // Current timestamp
+      shipment_status: row['出荷可能もしくは不可でしょうか？'] || null, // "Shipment Status"
+      target_shipping_date: row['出荷対象日を入力してください。'] || null, // "Target Shipping Date"
+      non_standard_large_boxes: row['規格外（大）箱数'] || 0, // "Non-standard Large Boxes"
+      non_standard_medium_boxes: row['規格外（中）箱数'] || 0, // "Non-standard Medium Boxes"
+      non_standard_small_boxes: row['規格外（小）箱数'] || 0, // "Non-standard Small Boxes"
+      three_la: row['3LA'] || 0,
+      three_lb: row['3LB'] || 0,
+      two_la: row['2LA'] || 0,
+      two_lb: row['2LB'] || 0,
+      la: row['LA'] || 0,
+      lb: row['LB'] || 0,
+      ma: row['MA'] || 0,
+      mb: row['MB'] || 0,
+      sa: row['SA'] || 0,
+      sb: row['SB'] || 0,
+      fileId: fileId, // Reference to the uploaded file
+    };
+    shipments.push(shipment);
+  });
+  
+  console.log(shipments);
+  
 
     
 
-    // Step 4: Insert all rows into `uploadedOrderData` table in bulk
-    const insertPromises = orders.map(order => {
-      return c.env.DB.prepare(`
-        INSERT INTO uploadedOrderData 
-          (SystemUploadDate, OrderDate, OrderNo, ProductCode, Quantity, CustomerCode, Message, DesiredDeliveryDate, DesiredDeliveryTime, status, fileId)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .bind( order.SystemUploadDate, order.OrderDate, order.OrderNo, order.ProductCode, order.Quantity, order.CustomerCode, order.Message, order.DesiredDeliveryDate, order.DesiredDeliveryTime, "pending", order.fileId)
-      .run();
-    });
+    // Step 4: Insert all rows into `shipmentavailable` table in bulk
+  const insertShipmentPromises = shipments.map(shipment => {
+    return c.env.DB.prepare(`
+      INSERT INTO shipmentavailable 
+        (farm_name, timestamp, shipment_status, target_shipping_date, non_standard_large_boxes, non_standard_medium_boxes, non_standard_small_boxes, three_la, three_lb, two_la, two_lb, la, lb, ma, mb, sa, sb, fileId)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .bind(
+      shipment.farm_name,
+      shipment.timestamp,
+      shipment.shipment_status,
+      shipment.target_shipping_date,
+      shipment.non_standard_large_boxes,
+      shipment.non_standard_medium_boxes,
+      shipment.non_standard_small_boxes,
+      shipment.three_la,
+      shipment.three_lb,
+      shipment.two_la,
+      shipment.two_lb,
+      shipment.la,
+      shipment.lb,
+      shipment.ma,
+      shipment.mb,
+      shipment.sa,
+      shipment.sb,
+      shipment.fileId
+    )
+    .run();
+  });
+
+  // Execute all insert queries
+Promise.all(insertShipmentPromises)
+.then(() => console.log('All shipments inserted successfully!'))
+.catch(err => console.error('Error inserting shipments:', err));
 
     try {
-      await Promise.all(insertPromises);
-      const totalNullValues = countNullValues(orders);
-      if (totalNullValues > 0) {
-        return c.json(
-          {
-            message: "File uploaded, but some fields have null values.",
-            nullValuesCount: totalNullValues,
-            fileId: fileId
-          },
-          403
-        );
-      }
-      return c.json({ message: "File uploaded and data stored successfully!" }, 200);
+      await Promise.all(insertShipmentPromises);
+      return c.json({ message: "File uploaded and shipment data stored successfully!" }, 200);
     } catch (error) {
       await c.env.DB.prepare(`
-          DELETE FROM orderdata WHERE id = ?
+          DELETE FROM shipmentavailabledata WHERE id = ?
       `)
       .bind(fileId)
       .run();    
       console.log(error)
-      return c.json({ message: "Error inserting order data", error }, 500);
+      return c.json({ message: "Error inserting shipment data", error }, 500);
     }
   } else {
     return c.json({ error: "No file uploaded" }, 400);
@@ -569,7 +605,7 @@ app.post('/ShipmentData', async (c) => {
 // Get Shipment data with pagination
 app.options('/ShipmentData', async (c) => {
   c.header('Access-Control-Allow-Origin', '*');
-  c.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  c.header('Access-Control-Allow-Methods', 'DELETE,GET, POST, OPTIONS');
   c.header('Access-Control-Allow-Headers', '*');
   return c.json({}, 200); 
 });
@@ -588,7 +624,7 @@ app.get('/ShipmentData', async (c) => {
 
   try {
     // Get the total count of records
-    const countResult = await c.env.DB.prepare(`SELECT COUNT(*) as count FROM orderdata`).first<{ count: number }>();
+    const countResult = await c.env.DB.prepare(`SELECT COUNT(*) as count FROM shipmentavailabledata`).first<{ count: number }>();
     if (!countResult || countResult.count === undefined) {
       return c.json({ message: 'Error fetching total count' }, 500);
     }
@@ -597,7 +633,7 @@ app.get('/ShipmentData', async (c) => {
 
     // Fetch the paginated data
     const orders = await c.env.DB.prepare(`
-      SELECT * FROM orderdata
+      SELECT * FROM shipmentavailabledata
       ORDER BY uploadDate DESC
       LIMIT ? OFFSET ?
     `)
@@ -619,6 +655,211 @@ app.get('/ShipmentData', async (c) => {
   }
 });
 
+// Delete shipment data
+app.options('/ShipmentData', async (c) => {
+  c.header('Access-Control-Allow-Origin', '*');
+  c.header('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+  c.header('Access-Control-Allow-Headers', '*');
+  return c.json({}, 200); 
+});
+
+app.delete('/ShipmentData', async (c) => {
+  // Add CORS headers
+  c.header('Access-Control-Allow-Origin', '*');
+  c.header('Access-Control-Allow-Methods', 'DELETE,OPTIONS');
+  c.header('Access-Control-Allow-Headers', '*');
+
+  const fileId = c.req.query('fileId');
+
+  if (!fileId) {
+    return c.json({ message: 'fileId is required' }, 400);
+  }
+
+  try {
+    // Delete the records associated with the given fileId
+    const deleteResult = await c.env.DB.prepare(`
+      DELETE FROM shipmentavailabledata
+      WHERE id = ?
+    `).bind(fileId).run();
+
+    return c.json({
+      message: `Records with fileId ${fileId} deleted successfully`,
+    }, 200);
+  } catch (error) {
+    console.error("Error deleting uploaded orders:", error);
+    return c.json({ message: 'Error deleting data', error }, 500);
+  }
+});
+
+//  Get files by id and name in shipment data
+app.options('/getShipmentAvailableData/:fileId', async (c) => {
+  c.header('Access-Control-Allow-Origin', '*');
+  c.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  c.header('Access-Control-Allow-Headers', '*');
+  return c.json({}, 200); 
+});
+
+app.get('/getShipmentAvailableData/:fileId', async (c) => {
+  // Add CORS headers
+  c.header('Access-Control-Allow-Origin', '*');
+  c.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  c.header('Access-Control-Allow-Headers', '*');
+
+  const { fileId } = c.req.param()
+  
+  try {
+    // const file = await c.env.FILE_BUCKET.get(fileId)
+
+    const queryResult = await c.env.DB.prepare(`
+      SELECT * 
+      FROM ShipmentAvailable 
+      WHERE fileId = ?
+    `).bind(fileId).all();
+
+    // Check if the query returned results
+    if (!queryResult.results || queryResult.results.length === 0) {
+      return c.json({ message: 'No data found for the given fileId' }, 404);
+    }
+
+    // Return the query result as JSON
+    return c.json({
+      message: 'Data fetched successfully',
+      data: queryResult.results,
+    }, 200);
+  } catch (error) {
+    return c.json({ message: 'Error fetching file', error: error }, 500)
+  }
+})
+
+// Update shipment data in table
+app.options('/updateShipmentAvailableData', async (c) => {
+  c.header('Access-Control-Allow-Origin', '*');
+  c.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  c.header('Access-Control-Allow-Headers', '*');
+  return c.json({}, 200); 
+});
+
+app.post('/updateShipmentAvailableData', async (c) => {
+  // Add CORS headers
+  c.header('Access-Control-Allow-Origin', '*');
+  c.header('Access-Control-Allow-Methods', 'POST,OPTIONS');
+  c.header('Access-Control-Allow-Headers', '*');
+
+  try {
+    // Parse JSON input
+    const data = await c.req.json();
+
+    // Extract data and assign default values for missing fields
+    const id = parseInt(data.id, 10) || null;
+    const farm_name = data.farm_name || null;
+    const timestamp = data.timestamp ;
+    const shipment_status = data.shipment_status || null;
+    const target_shipping_date = data.target_shipping_date;
+    const non_standard_large_boxes = parseInt(data.non_standard_large_boxes, 10) || 0;
+    const non_standard_medium_boxes = parseInt(data.non_standard_medium_boxes, 10) || 0;
+    const non_standard_small_boxes = parseInt(data.non_standard_small_boxes, 10) || 0;
+    const three_la = parseInt(data.three_la, 10) || 0;
+    const three_lb = parseInt(data.three_lb, 10) || 0;
+    const two_la = parseInt(data.two_la, 10) || 0;
+    const two_lb = parseInt(data.two_lb, 10) || 0;
+    const la = parseInt(data.la, 10) || 0;
+    const lb = parseInt(data.lb, 10) || 0;
+    const ma = parseInt(data.ma, 10) || 0;
+    const mb = parseInt(data.mb, 10) || 0;
+    const sa = parseInt(data.sa, 10) || 0;
+    const sb = parseInt(data.sb, 10) || 0;
+    const fileId = data.fileId ? parseInt(data.fileId, 10) : null;
+
+    if (!id) {
+      return c.json({ success: false, message: 'id is required for update' }, 400);
+    }
+
+    // Prepare SQL query
+    const query = `
+      UPDATE shipmentavailable
+      SET
+        farm_name = ?,
+        timestamp = ?,
+        shipment_status = ?,
+        target_shipping_date = ?,
+        non_standard_large_boxes = ?,
+        non_standard_medium_boxes = ?,
+        non_standard_small_boxes = ?,
+        three_la = ?,
+        three_lb = ?,
+        two_la = ?,
+        two_lb = ?,
+        la = ?,
+        lb = ?,
+        ma = ?,
+        mb = ?,
+        sa = ?,
+        sb = ?,
+        fileId = ?
+      WHERE id = ?
+    `;
+
+    // Execute query
+    const result = await c.env.DB.prepare(query)
+      .bind(
+        farm_name,
+        timestamp,
+        shipment_status,
+        target_shipping_date,
+        non_standard_large_boxes,
+        non_standard_medium_boxes,
+        non_standard_small_boxes,
+        three_la,
+        three_lb,
+        two_la,
+        two_lb,
+        la,
+        lb,
+        ma,
+        mb,
+        sa,
+        sb,
+        fileId,
+        id
+      )
+      .run();
+
+    // Return response
+    console.log(result)
+    if (result.meta.changes > 0) {
+      return c.json({ success: true, message: 'Shipment available data updated successfully' });
+    } else {
+      return c.json({ success: false, message: 'No record found with the given id' });
+    }
+  } catch (error) {
+    console.error('Error updating uploaded order data:', error);
+    return c.json({ error: 'Internal Server Error' }, 500);
+  }
+});
+
+// Allocate delivery dates
+app.options('/allocateDeliveryDate', async (c) => {
+  // Set CORS headers for preflight request
+  c.header('Access-Control-Allow-Origin', '*');
+  c.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  c.header('Access-Control-Allow-Headers', '*');
+  return c.json({}, 200);
+});
+
+app.get('/allocateDeliveryDate', async (c) => {
+  // Add CORS headers
+  c.header('Access-Control-Allow-Origin', '*');
+  c.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  c.header('Access-Control-Allow-Headers', '*');
+
+  const result = await c.env.DB.prepare("SELECT u.*, m.perfecture FROM uploadedOrderData u JOIN masterData m ON m.'orderID' = u.'CustomerCode' WHERE u.SystemUploadDate >= DATETIME('now', 'localtime', 'start of day');" )
+  .all();
+
+  const perfectureFromDB = await c.env.DB.prepare("select * from jfmaster;")
+  .all();
+
+  return c.json({perfectureFromDB,result}, 200);
+});
 
 app.options('/masterData', async (c) => {
   // Set CORS headers for preflight request
@@ -669,7 +910,7 @@ app.post('/masterData', async (c) => {
 
     // Prepare the SQL for inserting multiple entries into masterdata
     const insertStatement = c.env.DB.prepare(`
-      INSERT INTO masterdata (
+      INSERT OR REPLACE INTO masterdata (
         orderID, companyName, zipCode, perfecture, address, apartmentName, 
         customerRank, isAlternativeVariety, isAlternativeSize, 
         prohibitedVarieties, prohibitedFarms, fileName
@@ -818,7 +1059,7 @@ app.post('/jfMaster', async (c) => {
 
     // Prepare the SQL for inserting multiple entries into masterdata
     const insertStatement = c.env.DB.prepare(`
-      INSERT INTO jfMaster (
+      INSERT OR REPLACE INTO jfMaster (
     arrival_time, location, category
   ) VALUES (?, ?, ?)
     `);
