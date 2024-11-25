@@ -190,7 +190,13 @@ app.post('/uploadOrderData', async (c) => {
           row[header] = cell ? (cell.w || cell.v) : null;
         }
       }
-      if (Object.keys(row).length) result.push(row);
+      // Check if all values are null or empty
+      const isEmpty = Object.values(row).every(value => value === null || value === '');
+
+      // If any value is non-null/non-empty, push the order to the array
+      if (!isEmpty) {
+        if (Object.keys(row).length) result.push(row);
+      }
     }
     return result;
   }
@@ -198,7 +204,17 @@ app.post('/uploadOrderData', async (c) => {
 
     const orders:any = [];
     jsonData.forEach((row) => {
-      const order = { SystemUploadDate: new Date().toISOString(), OrderDate: row['Order Date'] || null, OrderNo: row['Order No.'] || null, ProductCode: row['Product code'] || null, Quantity: row['Quantity'] || null, CustomerCode: row['Customer code'] || null, Message: row['Message'] || null, DesiredDeliveryDate: row['Desired Delivery Date'] || null, DesiredDeliveryTime: row['Desired Delivery Time'] || null, fileId: fileId};
+      let orderDate = row['Order Date'] || null;
+      if (orderDate) {
+        // Assuming the date is in the format 'YYYY/MM/DD HH:mm'
+        const dateParts = orderDate.split(" ");
+        const [year, month, day] = dateParts[0].split("/");
+        const time = dateParts[1];
+
+        // Construct the date in 'YYYY-MM-DD HH:mm:ss' format
+        orderDate = `${year}-${month}-${day} ${time}:00`;  // Adding seconds to match DATETIME format
+      }
+      const order = { SystemUploadDate: new Date().toISOString(), OrderDate: orderDate, OrderNo: row['Order No.'] || null, ProductCode: row['Product code'] || null, Quantity: row['Quantity'] || null, CustomerCode: row['Customer code'] || null, Message: row['Message'] || null, DesiredDeliveryDate: row['Desired Delivery Date'] || null, DesiredDeliveryTime: row['Desired Delivery Time'] || null, fileId: fileId};
       orders.push(order);
     });
 
@@ -321,7 +337,7 @@ app.post('/updateOrderData', async (c) => {
     const Quantity = data.Quantity ? parseInt(data.Quantity, 10) : null;
     const CustomerCode = data.CustomerCode || null;
     const Message = data.Message || null;
-    const DesiredDeliveryDate = data.DesiredDeliveryDate ? new Date(data.DesiredDeliveryDate).toISOString().split('T')[0] : null;
+    const DesiredDeliveryDate = data.DesiredDeliveryDate || null;
     const DesiredDeliveryTime = data.DesiredDeliveryTime || null;
     const fileId = data.fileId ? parseInt(data.fileId, 10) : null;
 
@@ -837,11 +853,31 @@ app.post('/updateShipmentAvailableData', async (c) => {
   }
 });
 
+// Execute allocation
+app.options('/executeAllocation', async (c) => {
+  // Set CORS headers for preflight request
+  c.header('Access-Control-Allow-Origin', '*');
+  c.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  c.header('Access-Control-Allow-Headers', '*');
+  return c.json({}, 200);
+});
+
+app.get('/executeAllocation', async (c) => {
+  // Add CORS headers
+  c.header('Access-Control-Allow-Origin', '*');
+  c.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  c.header('Access-Control-Allow-Headers', '*');
+
+  
+
+  return c.json({status:"Orders alloted"}, 200);
+});
+
 // Allocate delivery dates
 app.options('/allocateDeliveryDate', async (c) => {
   // Set CORS headers for preflight request
   c.header('Access-Control-Allow-Origin', '*');
-  c.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  c.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   c.header('Access-Control-Allow-Headers', '*');
   return c.json({}, 200);
 });
@@ -849,16 +885,19 @@ app.options('/allocateDeliveryDate', async (c) => {
 app.get('/allocateDeliveryDate', async (c) => {
   // Add CORS headers
   c.header('Access-Control-Allow-Origin', '*');
-  c.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  c.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   c.header('Access-Control-Allow-Headers', '*');
 
-  const result = await c.env.DB.prepare("SELECT u.*, m.perfecture FROM uploadedOrderData u JOIN masterData m ON m.'orderID' = u.'CustomerCode' WHERE u.SystemUploadDate >= DATETIME('now', 'localtime', 'start of day');" )
+  // const result = await c.env.DB.prepare("SELECT u.*, m.perfecture FROM uploadedOrderData u JOIN masterData m ON m.'orderID' = u.'CustomerCode' WHERE u.SystemUploadDate >= DATETIME('now', 'localtime', 'start of day');" )
+  // .all();
+
+  const result = await c.env.DB.prepare(`SELECT *,  CASE WHEN p.category = 'A' THEN DATE('now', '+2 days')  WHEN p.category = 'B' THEN DATE('now', '+2 days')  WHEN p.category = 'C' THEN DATE('now', '+3 days') END AS DesiredDeliveryDate,  CASE WHEN p.category = 'A' THEN '08:00-12:00'  WHEN p.category = 'B' THEN '14:00-16:00'  WHEN p.category = 'C' THEN '08:00-12:00' END AS DesiredDeliveryTime  FROM uploadedOrderData u  JOIN masterData m ON u.CustomerCode = m.orderID  JOIN jfMaster p ON m.perfecture = p.location  WHERE (u.DesiredDeliveryDate IS NULL OR u.DesiredDeliveryTime IS NULL)  AND u.OrderDate < DATETIME('now', 'start of day', '+13 hours') LIMIT 100`).all();
+  console.log(result)
+
+  const perfectureFromDB = await c.env.DB.prepare("select * from uploadedOrderData;")
   .all();
 
-  const perfectureFromDB = await c.env.DB.prepare("select * from jfmaster;")
-  .all();
-
-  return c.json({perfectureFromDB,result}, 200);
+  return c.json({result}, 200);
 });
 
 app.options('/masterData', async (c) => {

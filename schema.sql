@@ -198,14 +198,14 @@ CREATE TABLE shippingDaysMaster (
 CREATE TABLE IF NOT EXISTS uploadedOrderData (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     SystemUploadDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    OrderDate DATE,
+    OrderDate DATETIME,
     OrderNo TEXT,
     ProductCode TEXT,
     Quantity INTEGER,
     CustomerCode TEXT,
     Message TEXT,
     DesiredDeliveryDate DATE,
-    DesiredDeliveryTime TIME,
+    DesiredDeliveryTime TEXT,
     fileId INTEGER,
     status TEXT,
     FOREIGN KEY (fileId) REFERENCES orderdata (id) ON DELETE CASCADE
