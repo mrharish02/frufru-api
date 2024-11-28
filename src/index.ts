@@ -226,7 +226,7 @@ app.post('/uploadOrderData', async (c) => {
         INSERT INTO uploadedOrderData 
           (SystemUploadDate, OrderDate, OrderNo, ProductCode, Quantity, CustomerCode, Message, DesiredDeliveryDate, DesiredDeliveryTime, status, fileId)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .bind( order.SystemUploadDate, order.OrderDate, order.OrderNo, order.ProductCode, order.Quantity, order.CustomerCode, order.Message, order.DesiredDeliveryDate, order.DesiredDeliveryTime, "pending", order.fileId)
+      .bind( order.SystemUploadDate, order.OrderDate, order.OrderNo, order.ProductCode, order.Quantity, order.CustomerCode, order.Message, order.DesiredDeliveryDate, order.DesiredDeliveryTime, "new", order.fileId)
       .run();
     });
 
@@ -862,15 +862,181 @@ app.options('/executeAllocation', async (c) => {
   return c.json({}, 200);
 });
 
+// app.get('/executeAllocation', async (c) => {
+//   // Add CORS headers
+//   c.header('Access-Control-Allow-Origin', '*');
+//   c.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+//   c.header('Access-Control-Allow-Headers', '*');
+
+  
+
+//   return c.json({status:"Orders alloted"}, 200);
+// });
+
 app.get('/executeAllocation', async (c) => {
   // Add CORS headers
   c.header('Access-Control-Allow-Origin', '*');
   c.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   c.header('Access-Control-Allow-Headers', '*');
 
-  
+  try {
+    const db = c.env.DB;
 
-  return c.json({status:"Orders alloted"}, 200);
+    // Fetch all pending orders and join with masterdata for customer preferences
+    const ordersQuery = `
+      SELECT 
+        o.id AS orderId,
+        o.OrderDate,
+        o.OrderNo,
+        o.ProductCode,
+        o.Quantity,
+        o.CustomerCode,
+        o.DesiredDeliveryDate,
+        o.DesiredDeliveryTime,
+        c.companyName,
+        c.customerRank,
+        c.isAlternativeVariety,
+        c.isAlternativeSize,
+        c.prohibitedVarieties,
+        c.prohibitedFarms,
+        o.status
+      FROM uploadedOrderData o
+      JOIN masterdata c ON o.CustomerCode = c.orderID
+      WHERE o.status = 'new'
+      ORDER BY o.DesiredDeliveryDate ASC, c.customerRank DESC
+    `;
+    const orders = await db.prepare(ordersQuery).all();
+
+    console.log("orders all", orders)
+
+    if (!orders.results || orders.results.length === 0) {
+      return c.json({ status: 'No pending orders found', orders: [] }, 200);
+    }
+
+    // Fetch all shipment availability data
+    const shipmentsQuery = `
+      SELECT 
+        * 
+      FROM shipmentavailable
+      WHERE shipment_status = '出荷可能です。'
+      ORDER BY target_shipping_date ASC, farm_name ASC
+    `;
+    const shipments = await db.prepare(shipmentsQuery).all();
+
+    if (!shipments.results || shipments.results.length === 0) {
+      return c.json({ status: 'No shipment data available', orders: orders.results }, 200);
+    }
+
+    // Fetch product-to-size mappings
+    const productRulesQuery = `
+      SELECT 
+        product_code, size
+      FROM productMaster
+    `;
+    const productRules = await db.prepare(productRulesQuery).all();
+
+    if (!productRules.results || productRules.results.length === 0) {
+      return c.json({ status: 'No product size rules found', orders: orders.results }, 200);
+    }
+
+    const productSizeMap = {};
+    productRules.results.forEach((rule) => {
+      productSizeMap[rule.ProductCode] = rule.size;
+    });
+
+    const executedOrders = [];
+
+    // Allocate orders
+    for (const order of orders.results) {
+      const productSize = productSizeMap[order.ProductCode];
+      let allocated = false;
+
+      for (const shipment of shipments.results) {
+        // Skip prohibited farms
+        if (order.prohibitedFarms && order.prohibitedFarms.includes(shipment.farm_name)) {
+          console.log("order is in prohibited farm");
+          continue;
+        }
+
+        // Check if the required size is available
+        if (shipment[productSize] && shipment[productSize] >= order.Quantity) {
+          // Deduct quantity from shipment
+          await db.prepare(`
+            UPDATE shipmentavailable
+            SET ${productSize} = ${productSize} - ?
+            WHERE id = ?
+          `).bind(order.Quantity, shipment.id).run();
+
+          // Insert into executedOrder table
+          await db.prepare(`
+            INSERT INTO executedOrderData (orderId, farm_name, size, quantity)
+            VALUES (?, ?, ?, ?)
+          `).bind(order.orderId, shipment.farm_name, productSize, order.Quantity).run();
+
+          // Update order status to allocated
+          await db.prepare(`
+            UPDATE uploadedOrderData
+            SET status = 'allocated'
+            WHERE id = ?
+          `).bind(order.orderId).run();
+
+          executedOrders.push({
+            orderId: order.orderId,
+            farm_name: shipment.farm_name,
+            size: productSize,
+            quantity: order.Quantity,
+          });
+
+          allocated = true;
+          order.status = 'allocated'; // Update the order object for frontend
+          break;
+        }
+      }
+
+      // If not allocated, mark the order as stock_shortage
+      if (!allocated) {
+        await db.prepare(`
+          UPDATE uploadedOrderData
+          SET tagType = 'stock_shortage',status = 'pending'
+          WHERE id = ?
+        `).bind(order.orderId).run();
+
+        order.tagType = 'stock_shortage'; // Update the order object for frontend
+      }
+    }
+
+    // Return updated orders list and executed orders to frontend
+    return c.json({
+      status: 'Orders allocated successfully',
+      orders: orders.results,
+      executedOrders,
+    }, 200);
+  } catch (error) {
+    console.error('Error executing allocation:', error);
+    return c.json({ status: 'Error allocating orders', error: error.message }, 500);
+  }
+});
+
+// Fetch executed order data
+app.options('/executedOrders', async (c) => {
+  // Set CORS headers for preflight request
+  c.header('Access-Control-Allow-Origin', '*');
+  c.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  c.header('Access-Control-Allow-Headers', '*');
+  return c.json({}, 200);
+});
+
+app.get('/executedOrders', async (c) => {
+  // Add CORS headers
+  c.header('Access-Control-Allow-Origin', '*');
+  c.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  c.header('Access-Control-Allow-Headers', '*');
+
+  const result = await c.env.DB.prepare("SELECT *, m.perfecture FROM uploadedOrderData u JOIN masterData m ON m.'orderID' = u.'CustomerCode' WHERE u.status IS NOT 'new'" )
+  .all();
+
+
+  return c.json({result}, 200);
 });
 
 // Allocate delivery dates
@@ -891,13 +1057,37 @@ app.get('/allocateDeliveryDate', async (c) => {
   // const result = await c.env.DB.prepare("SELECT u.*, m.perfecture FROM uploadedOrderData u JOIN masterData m ON m.'orderID' = u.'CustomerCode' WHERE u.SystemUploadDate >= DATETIME('now', 'localtime', 'start of day');" )
   // .all();
 
-  const result = await c.env.DB.prepare(`SELECT *,  CASE WHEN p.category = 'A' THEN DATE('now', '+2 days')  WHEN p.category = 'B' THEN DATE('now', '+2 days')  WHEN p.category = 'C' THEN DATE('now', '+3 days') END AS DesiredDeliveryDate,  CASE WHEN p.category = 'A' THEN '08:00-12:00'  WHEN p.category = 'B' THEN '14:00-16:00'  WHEN p.category = 'C' THEN '08:00-12:00' END AS DesiredDeliveryTime  FROM uploadedOrderData u  JOIN masterData m ON u.CustomerCode = m.orderID  JOIN jfMaster p ON m.perfecture = p.location  WHERE (u.DesiredDeliveryDate IS NULL OR u.DesiredDeliveryTime IS NULL)  AND u.OrderDate < DATETIME('now', 'start of day', '+13 hours') LIMIT 100`).all();
-  console.log(result)
+  const records = await c.env.DB.prepare(`SELECT *,  CASE WHEN p.category = 'A' THEN DATE('now', '+2 days')  WHEN p.category = 'B' THEN DATE('now', '+2 days')  WHEN p.category = 'C' THEN DATE('now', '+3 days') END AS DesiredDeliveryDate,  CASE WHEN p.category = 'A' THEN '08:00-12:00'  WHEN p.category = 'B' THEN '14:00-16:00'  WHEN p.category = 'C' THEN '08:00-12:00' END AS DesiredDeliveryTime  FROM uploadedOrderData u  JOIN masterData m ON u.CustomerCode = m.orderID  JOIN jfMaster p ON m.perfecture = p.location  WHERE (u.DesiredDeliveryDate IS NULL OR u.DesiredDeliveryTime IS NULL)  AND u.OrderDate < DATETIME('now', 'start of day', '+13 hours')`).all();
 
-  const perfectureFromDB = await c.env.DB.prepare("select * from uploadedOrderData;")
-  .all();
+  console.log(records);
 
-  return c.json({result}, 200);
+  if (records.results.length === 0) {
+    console.log('No records to update.');
+  } else {
+    for (const record of records.results) {
+      // Update each record individually
+      await c.env.DB.prepare(`
+        UPDATE uploadedOrderData
+        SET 
+          DesiredDeliveryDate = ?, 
+          DesiredDeliveryTime = ?
+        WHERE id = ?
+      `)
+        .bind(record.DesiredDeliveryDate, record.DesiredDeliveryTime, record.id)
+        .run();
+    }
+    console.log(`${records.results.length} records updated successfully.`);
+  }
+  
+  // Fetch the updated records for verification or return to the frontend
+  const updatedRecords = await c.env.DB.prepare(`
+    SELECT * FROM uploadedOrderData
+    WHERE id IN (${records.results.map(r => r.id).join(', ')})
+  `).all();
+  
+  console.log(updatedRecords);
+
+  return c.json({updatedRecords}, 200);
 });
 
 app.options('/masterData', async (c) => {

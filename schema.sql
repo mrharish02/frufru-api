@@ -367,6 +367,7 @@ CREATE TABLE IF NOT EXISTS uploadedOrderData (
     DesiredDeliveryTime TIME,
     fileId INTEGER,
     status TEXT,
+    tagType TEXT,
     FOREIGN KEY (fileId) REFERENCES orderdata (id) ON DELETE CASCADE
 );
 
