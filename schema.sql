@@ -406,3 +406,13 @@ CREATE TABLE  shipmentavailabledata (
     uploadStatus TEXT,
     fileSize INTEGER
 );
+
+CREATE TABLE IF NOT EXISTS executedOrderData (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,       -- Unique identifier for each execution record
+    orderId INTEGER NOT NULL,                   -- Reference to the uploaded order
+    farm_name TEXT NOT NULL,                    -- Name of the farm fulfilling the order
+    size TEXT NOT NULL,                         -- Size category of the allocation (e.g., LA, LB)
+    quantity INTEGER NOT NULL,                  -- Quantity allocated
+    executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- Timestamp of allocation
+    FOREIGN KEY (orderId) REFERENCES uploadedOrderData (id) ON DELETE CASCADE
+);

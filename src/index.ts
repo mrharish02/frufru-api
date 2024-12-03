@@ -117,13 +117,13 @@ app.options('/uploadOrderData', async (c) => {
   return c.json({}, 200);
 });
 
-function countNullValues(orders:any) {
+function countNullValues(orders: any) {
   let nullCount = 0;
 
-  orders.forEach((order:any) => {
-    // Loop through each key in the order object
-    Object.values(order).forEach((value) => {
-      if (value === null) {
+  orders.forEach((order: any) => {
+    // Loop through each key-value pair in the order object
+    Object.entries(order).forEach(([key, value]) => {
+      if (key !== 'tagType' && value === null) {
         nullCount++;
       }
     });
@@ -131,6 +131,7 @@ function countNullValues(orders:any) {
 
   return nullCount;
 }
+
 app.post('/uploadOrderData', async (c) => {
   // Add CORS headers
   c.header('Access-Control-Allow-Origin', '*');
@@ -214,7 +215,16 @@ app.post('/uploadOrderData', async (c) => {
         // Construct the date in 'YYYY-MM-DD HH:mm:ss' format
         orderDate = `${year}-${month}-${day} ${time}:00`;  // Adding seconds to match DATETIME format
       }
-      const order = { SystemUploadDate: new Date().toISOString(), OrderDate: orderDate, OrderNo: row['Order No.'] || null, ProductCode: row['Product code'] || null, Quantity: row['Quantity'] || null, CustomerCode: row['Customer code'] || null, Message: row['Message'] || null, DesiredDeliveryDate: row['Desired Delivery Date'] || null, DesiredDeliveryTime: row['Desired Delivery Time'] || null, fileId: fileId};
+      let desiredDeliveryDate = row['Desired Delivery Date'] || null;
+      if (desiredDeliveryDate) {
+        // Assuming the date is in the format 'YYYY/MM/DD HH:mm'
+        const dateParts = desiredDeliveryDate.split(" ");
+        const [year, month, day] = dateParts[0].split("/");
+
+        // Construct the date in 'YYYY-MM-DD HH:mm:ss' format
+        desiredDeliveryDate = `${year}-${month}-${day}`;  // Adding seconds to match DATETIME format
+      }
+      const order = { SystemUploadDate: new Date().toISOString(), OrderDate: orderDate, OrderNo: row['Order No.'] || null, ProductCode: row['Product code'] || null, Quantity: row['Quantity'] || null, CustomerCode: row['Customer code'] || null, Message: row['Message'] || null, DesiredDeliveryDate: desiredDeliveryDate, DesiredDeliveryTime: row['Desired Delivery Time'] || null, fileId: fileId};
       orders.push(order);
     });
 
@@ -909,9 +919,9 @@ app.get('/executeAllocation', async (c) => {
 
     console.log("orders all", orders)
 
-    if (!orders.results || orders.results.length === 0) {
-      return c.json({ status: 'No pending orders found', orders: [] }, 200);
-    }
+    // if (!orders.results || orders.results.length === 0) {
+    //   return c.json({ status: 'No pending orders found', orders: [] }, 200);
+    // }
 
     // Fetch all shipment availability data
     const shipmentsQuery = `
@@ -935,6 +945,8 @@ app.get('/executeAllocation', async (c) => {
     `;
     const productRules = await db.prepare(productRulesQuery).all();
 
+    console.log("Product rules",productRules)
+
     if (!productRules.results || productRules.results.length === 0) {
       return c.json({ status: 'No product size rules found', orders: orders.results }, 200);
     }
@@ -947,23 +959,172 @@ app.get('/executeAllocation', async (c) => {
     const executedOrders = [];
 
     // Allocate orders
-    for (const order of orders.results) {
-      const productSize = productSizeMap[order.ProductCode];
-      let allocated = false;
+    // for (const order of orders.results) {
+    //   const productSize = productSizeMap[order.ProductCode];
+    //   let allocated = false;
 
-      for (const shipment of shipments.results) {
-        // Skip prohibited farms
-        if (order.prohibitedFarms && order.prohibitedFarms.includes(shipment.farm_name)) {
-          console.log("order is in prohibited farm");
-          continue;
-        }
+    //   for (const shipment of shipments.results) {
+    //     // Skip prohibited farms
+    //     if (order.prohibitedFarms && order.prohibitedFarms.includes(shipment.farm_name)) {
+    //       console.log("order is in prohibited farm");
+    //       continue;
+    //     }
 
-        // Check if the required size is available
-        if (shipment[productSize] && shipment[productSize] >= order.Quantity) {
-          // Deduct quantity from shipment
+    //     // Check if the required size is available
+    //     if (shipment[productSize] && shipment[productSize] >= order.Quantity) {
+    //       // Deduct quantity from shipment
+    //       await db.prepare(`
+    //         UPDATE shipmentavailable
+    //         SET ${productSize} = ${productSize} - ?
+    //         WHERE id = ?
+    //       `).bind(order.Quantity, shipment.id).run();
+
+    //       // Insert into executedOrder table
+    //       await db.prepare(`
+    //         INSERT INTO executedOrderData (orderId, farm_name, size, quantity)
+    //         VALUES (?, ?, ?, ?)
+    //       `).bind(order.orderId, shipment.farm_name, productSize, order.Quantity).run();
+
+    //       // Update order status to allocated
+    //       await db.prepare(`
+    //         UPDATE uploadedOrderData
+    //         SET status = 'allocated'
+    //         WHERE id = ?
+    //       `).bind(order.orderId).run();
+
+    //       executedOrders.push({
+    //         orderId: order.orderId,
+    //         farm_name: shipment.farm_name,
+    //         size: productSize,
+    //         quantity: order.Quantity,
+    //       });
+
+    //       allocated = true;
+    //       order.status = 'allocated'; // Update the order object for frontend
+    //       break;
+    //     }
+    //   }
+
+    //   // If not allocated, mark the order as stock_shortage
+    //   if (!allocated) {
+    //     await db.prepare(`
+    //       UPDATE uploadedOrderData
+    //       SET tagType = 'stock_shortage',status = 'pending'
+    //       WHERE id = ?
+    //     `).bind(order.orderId).run();
+
+    //     order.tagType = 'stock_shortage'; // Update the order object for frontend
+    //   }
+    // }
+
+    // Define size hierarchy and mapping for starting points
+const sizeHierarchy = ['3LA', '3LB', '2LA', '2LB', 'LA', 'LB', 'MA', 'MB', 'SA', 'SB', '2SA', '2SB'];
+const sizeStartMap = {
+  'L': ['5L', '4L', '3L', '2L', 'L'], // Start from '5L' for 'L'
+  'M': ['3L', '2L', 'L', 'M'],        // Start from '3L' for 'M'
+  'S': ['2L', 'L', 'M', 'S'],         // Start from '2L' for 'S'
+  '訳あり中': ['訳あり中'],
+  '訳あり小': ['訳あり小'],
+  '訳あり大': ['訳あり大'],
+};
+
+// Map size names to database column names
+const sizeToColumnMap = {
+  '訳あり大': 'non_standard_large_boxes',
+  '訳あり中': 'non_standard_medium_boxes',
+  '訳あり小': 'non_standard_small_boxes',
+  '3LA': 'three_la',
+  '3LB': 'three_lb',
+  '2LA': 'two_la',
+  '2LB': 'two_lb',
+  'LA': 'la',
+  'LB': 'lb',
+  'MA': 'ma',
+  'MB': 'mb',
+  'SA': 'sa',
+  'SB': 'sb',
+  '2SA': 'sa', // Adjust if 2SA/2SB is the same as SA/SB
+  '2SB': 'sb',
+};
+
+// Function to determine size categories to try for allocation
+const getSizeAllocationOrder = (productSize) => {
+  if (sizeStartMap[productSize]) {
+    return sizeStartMap[productSize];
+  }
+  // Default fallback: Use the full size hierarchy
+  return sizeHierarchy;
+};
+
+for (const order of orders.results) {
+  const productSize = productSizeMap[order.ProductCode];
+  let allocated = false;
+
+  // Get the size allocation order based on the product size
+  const allocationSizes = getSizeAllocationOrder(productSize);
+
+  // Try allocation for each shipment
+  for (const shipment of shipments.results) {
+    // Skip prohibited farms
+    if (order.prohibitedFarms && order.prohibitedFarms.includes(shipment.farm_name)) {
+      console.log("Order is in prohibited farm");
+      continue;
+    }
+
+    // Check the sizes in the allocation order
+    for (const size of allocationSizes) {
+      const columnName = sizeToColumnMap[size]; // Map size to column name
+
+      if (columnName && shipment[columnName] && shipment[columnName] >= order.Quantity) {
+        // Deduct quantity from shipment
+        await db.prepare(`
+          UPDATE shipmentavailable
+          SET ${columnName} = ${columnName} - ?
+          WHERE id = ?
+        `).bind(order.Quantity, shipment.id).run();
+
+        // Insert into executedOrder table
+        await db.prepare(`
+          INSERT INTO executedOrderData (orderId, farm_name, size, quantity)
+          VALUES (?, ?, ?, ?)
+        `).bind(order.orderId, shipment.farm_name, size, order.Quantity).run();
+
+        // Update order status to allocated
+        await db.prepare(`
+          UPDATE uploadedOrderData
+          SET status = 'allocated'
+          WHERE id = ?
+        `).bind(order.orderId).run();
+
+        executedOrders.push({
+          orderId: order.orderId,
+          farm_name: shipment.farm_name,
+          size: size,
+          quantity: order.Quantity,
+        });
+
+        allocated = true;
+        order.status = 'allocated'; // Update the order object for frontend
+        break;
+      }
+    }
+
+    if (allocated) break;
+  }
+
+  // Check for next-day shipment if not allocated
+  if (!allocated) {
+    const nextDayShipments = shipmentsNextDay.results;
+
+    for (const shipment of nextDayShipments) {
+      for (const size of allocationSizes) {
+        const columnName = sizeToColumnMap[size]; // Map size to column name
+
+        if (columnName && shipment[columnName] && shipment[columnName] >= order.Quantity) {
+          // Deduct quantity from next-day shipment
           await db.prepare(`
             UPDATE shipmentavailable
-            SET ${productSize} = ${productSize} - ?
+            SET ${columnName} = ${columnName} - ?
             WHERE id = ?
           `).bind(order.Quantity, shipment.id).run();
 
@@ -971,7 +1132,7 @@ app.get('/executeAllocation', async (c) => {
           await db.prepare(`
             INSERT INTO executedOrderData (orderId, farm_name, size, quantity)
             VALUES (?, ?, ?, ?)
-          `).bind(order.orderId, shipment.farm_name, productSize, order.Quantity).run();
+          `).bind(order.orderId, shipment.farm_name, size, order.Quantity).run();
 
           // Update order status to allocated
           await db.prepare(`
@@ -983,7 +1144,7 @@ app.get('/executeAllocation', async (c) => {
           executedOrders.push({
             orderId: order.orderId,
             farm_name: shipment.farm_name,
-            size: productSize,
+            size: size,
             quantity: order.Quantity,
           });
 
@@ -993,17 +1154,23 @@ app.get('/executeAllocation', async (c) => {
         }
       }
 
-      // If not allocated, mark the order as stock_shortage
-      if (!allocated) {
-        await db.prepare(`
-          UPDATE uploadedOrderData
-          SET tagType = 'stock_shortage',status = 'pending'
-          WHERE id = ?
-        `).bind(order.orderId).run();
-
-        order.tagType = 'stock_shortage'; // Update the order object for frontend
-      }
+      if (allocated) break;
     }
+  }
+
+  // If not allocated, mark the order as allocation_failed
+  if (!allocated) {
+    await db.prepare(`
+      UPDATE uploadedOrderData
+      SET tagType = 'allocation_failed', status = 'pending'
+      WHERE id = ?
+    `).bind(order.orderId).run();
+
+    order.tagType = 'allocation_failed'; // Update the order object for frontend
+    order.status = 'pending';
+  }
+}
+
 
     // Return updated orders list and executed orders to frontend
     return c.json({
@@ -1027,16 +1194,31 @@ app.options('/executedOrders', async (c) => {
 });
 
 app.get('/executedOrders', async (c) => {
-  // Add CORS headers
-  c.header('Access-Control-Allow-Origin', '*');
-  c.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  c.header('Access-Control-Allow-Headers', '*');
+// Add CORS headers
+c.header('Access-Control-Allow-Origin', '*');
+c.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+c.header('Access-Control-Allow-Headers', '*');
 
-  const result = await c.env.DB.prepare("SELECT *, m.perfecture FROM uploadedOrderData u JOIN masterData m ON m.'orderID' = u.'CustomerCode' WHERE u.status IS NOT 'new'" )
-  .all();
+const result = await c.env.DB.prepare(`
+  SELECT 
+    u.*, 
+    m.*, 
+    e.farm_name, 
+    e.size, 
+    e.quantity 
+  FROM 
+    uploadedOrderData u 
+  JOIN 
+    masterData m 
+    ON m.orderID = u.CustomerCode
+  LEFT JOIN 
+    executedOrderData e 
+    ON e.orderId = u.id
+  WHERE 
+    u.status IS NOT 'new'
+`).all();
 
-
-  return c.json({result}, 200);
+return c.json({ result }, 200);
 });
 
 // Allocate delivery dates
