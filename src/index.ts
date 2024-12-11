@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { Hono } from 'hono'
 import * as XLSX from "xlsx";
+const Papa = require('papaparse');
 
 type Env = {
   FILE_BUCKET: R2Bucket;
@@ -132,15 +133,152 @@ function countNullValues(orders: any) {
   return nullCount;
 }
 
+// app.post('/uploadOrderData', async (c) => {
+//   // Add CORS headers
+//   c.header('Access-Control-Allow-Origin', '*');
+//   c.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
+//   c.header('Access-Control-Allow-Headers', '*');
+  
+//   const form = await c.req.formData();
+//   const file = form.get("file");
+  
+//   if (file instanceof File) {
+//     const buffer = await file.arrayBuffer();
+//     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+//     const fileName = `${file.name}_${timestamp}`;
+//     const fileSize = buffer.byteLength;
+//     const uploadStatus = "Success";
+
+//     // // Step 1: Upload the file to R2 bucket
+//     // await c.env.FILE_BUCKET.put(fileName, buffer);
+
+//     // Step 2: Insert file details into `orderdata` table
+//     const insertFileResult = await c.env.DB.prepare(`
+//       INSERT INTO orderdata (fileName, uploadDate, uploadStatus, fileSize)
+//       VALUES (?, CURRENT_TIMESTAMP, ?, ?)
+//       RETURNING id, fileName, uploadDate, uploadStatus, fileSize
+//     `)
+//     .bind(fileName, uploadStatus, fileSize)
+//     .run();
+
+//     if (!insertFileResult.success) {
+//       return c.json({ message: "Failed to insert file data", error: insertFileResult.error }, 500);
+//     }
+
+//     // Get the fileId of the newly inserted file
+//     const fileId = insertFileResult.results[0].id;
+//     const workbook = XLSX.read(buffer, { type: "array" });
+//     const sheetName = workbook.SheetNames[0]; // Get the first sheet
+//     const worksheet = workbook.Sheets[sheetName];
+
+//   // Load the workbook
+//   const sheet = workbook.Sheets[workbook.SheetNames[0]];
+//   function sheetToJsonUsingW(worksheet) {
+//     const result = [];
+//     const range = XLSX.utils.decode_range(worksheet['!ref']);
+//     console.log(sheet)
+
+//     for (let R = range.s.r + 1; R <= range.e.r; ++R) {
+//       const row = {};
+//       for (let C = range.s.c; C <= range.e.c; ++C) {
+//         const cellAddress = XLSX.utils.encode_cell({ r: R, c: C });
+//         const headerAddress = XLSX.utils.encode_cell({ r: range.s.r, c: C });
+
+//         const cell = sheet[cellAddress];
+//         const headerCell = sheet[headerAddress];
+
+//         if (headerCell) {
+//           const header = String(headerCell.w || headerCell.v);
+//           row[header] = cell ? (cell.w || cell.v) : null;
+//         }
+//       }
+//       // Check if all values are null or empty
+//       const isEmpty = Object.values(row).every(value => value === null || value === '');
+
+//       // If any value is non-null/non-empty, push the order to the array
+//       if (!isEmpty) {
+//         if (Object.keys(row).length) result.push(row);
+//       }
+//     }
+//     return result;
+//   }
+//   const jsonData = sheetToJsonUsingW(sheet);
+
+//     const orders:any = [];
+//     jsonData.forEach((row) => {
+//       let orderDate = row['Order Date'] || null;
+//       if (orderDate) {
+//         // Assuming the date is in the format 'YYYY/MM/DD HH:mm'
+//         const dateParts = orderDate.split(" ");
+//         const [year, month, day] = dateParts[0].split("/");
+//         const time = dateParts[1];
+
+//         // Construct the date in 'YYYY-MM-DD HH:mm:ss' format
+//         orderDate = `${year}-${month}-${day} ${time}:00`;  // Adding seconds to match DATETIME format
+//       }
+//       let desiredDeliveryDate = row['Desired Delivery Date'] || null;
+//       if (desiredDeliveryDate) {
+//         // Assuming the date is in the format 'YYYY/MM/DD HH:mm'
+//         const dateParts = desiredDeliveryDate.split(" ");
+//         const [year, month, day] = dateParts[0].split("/");
+
+//         // Construct the date in 'YYYY-MM-DD HH:mm:ss' format
+//         desiredDeliveryDate = `${year}-${month}-${day}`;  // Adding seconds to match DATETIME format
+//       }
+//       const order = { SystemUploadDate: new Date().toISOString(), OrderDate: orderDate, OrderNo: row['Order No.'] || null, ProductCode: row['Product code'] || null, Quantity: row['Quantity'] || null, CustomerCode: row['Customer code'] || null, Message: row['Message'] || null, DesiredDeliveryDate: desiredDeliveryDate, DesiredDeliveryTime: row['Desired Delivery Time'] || null, fileId: fileId};
+//       orders.push(order);
+//     });
+
+//     console.log("orders",jsonData,orders)
+
+//     // Step 4: Insert all rows into `uploadedOrderData` table in bulk
+//     const insertPromises = orders.map(order => {
+//       return c.env.DB.prepare(`
+//         INSERT INTO uploadedOrderData 
+//           (SystemUploadDate, OrderDate, OrderNo, ProductCode, Quantity, CustomerCode, Message, DesiredDeliveryDate, DesiredDeliveryTime, status, fileId)
+//         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+//       .bind( order.SystemUploadDate, order.OrderDate, order.OrderNo, order.ProductCode, order.Quantity, order.CustomerCode, order.Message, order.DesiredDeliveryDate, order.DesiredDeliveryTime, "new", order.fileId)
+//       .run();
+//     });
+
+//     try {
+//       await Promise.all(insertPromises);
+//       const totalNullValues = countNullValues(orders);
+//       if (totalNullValues > 0) {
+//         return c.json(
+//           {
+//             message: "File uploaded, but some fields have null values.",
+//             nullValuesCount: totalNullValues,
+//             fileId: fileId
+//           },
+//           403
+//         );
+//       }
+//       return c.json({ message: "File uploaded and data stored successfully!" }, 200);
+//     } catch (error) {
+//       await c.env.DB.prepare(`
+//           DELETE FROM orderdata WHERE id = ?
+//       `)
+//       .bind(fileId)
+//       .run();    
+//       console.log(error)
+//       return c.json({ message: "Error inserting order data", error }, 500);
+//     }
+//   } else {
+//     return c.json({ error: "No file uploaded" }, 400);
+//   }
+// });
+
+
 app.post('/uploadOrderData', async (c) => {
   // Add CORS headers
   c.header('Access-Control-Allow-Origin', '*');
   c.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
   c.header('Access-Control-Allow-Headers', '*');
-  
+
   const form = await c.req.formData();
   const file = form.get("file");
-  
+
   if (file instanceof File) {
     const buffer = await file.arrayBuffer();
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -148,96 +286,110 @@ app.post('/uploadOrderData', async (c) => {
     const fileSize = buffer.byteLength;
     const uploadStatus = "Success";
 
-    // // Step 1: Upload the file to R2 bucket
-    // await c.env.FILE_BUCKET.put(fileName, buffer);
-
-    // Step 2: Insert file details into `orderdata` table
+    // Insert file details into `orderdata` table
     const insertFileResult = await c.env.DB.prepare(`
       INSERT INTO orderdata (fileName, uploadDate, uploadStatus, fileSize)
       VALUES (?, CURRENT_TIMESTAMP, ?, ?)
       RETURNING id, fileName, uploadDate, uploadStatus, fileSize
     `)
-    .bind(fileName, uploadStatus, fileSize)
-    .run();
+      .bind(fileName, uploadStatus, fileSize)
+      .run();
 
     if (!insertFileResult.success) {
       return c.json({ message: "Failed to insert file data", error: insertFileResult.error }, 500);
     }
 
-    // Get the fileId of the newly inserted file
     const fileId = insertFileResult.results[0].id;
-    const workbook = XLSX.read(buffer, { type: "array" });
-    const sheetName = workbook.SheetNames[0]; // Get the first sheet
-    const worksheet = workbook.Sheets[sheetName];
 
-  // Load the workbook
-  const sheet = workbook.Sheets[workbook.SheetNames[0]];
-  function sheetToJsonUsingW(worksheet) {
-    const result = [];
-    const range = XLSX.utils.decode_range(worksheet['!ref']);
-    console.log(sheet)
+    let orders = [];
+    let jsonData;
 
-    for (let R = range.s.r + 1; R <= range.e.r; ++R) {
-      const row = {};
-      for (let C = range.s.c; C <= range.e.c; ++C) {
-        const cellAddress = XLSX.utils.encode_cell({ r: R, c: C });
-        const headerAddress = XLSX.utils.encode_cell({ r: range.s.r, c: C });
+    // Check file type and parse accordingly
+    const isCSV = file.name.endsWith('.csv');
+    if (isCSV) {
+      // Parse CSV using PapaParse
+      // const Papa = require('papaparse');
+      const csvString = new TextDecoder().decode(buffer);
+      const parsedCSV = Papa.parse(csvString, {
+        header: true,
+        skipEmptyLines: true
+      });
 
-        const cell = sheet[cellAddress];
-        const headerCell = sheet[headerAddress];
+      jsonData = parsedCSV.data;
+      console.log("json from csv",jsonData)
+    } else {
+      // Parse Excel using xlsx
+      const workbook = XLSX.read(buffer, { type: "array" });
+      const sheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+      
+      const sheetToJsonUsingW = (worksheet) => {
+        const result = [];
+        const range = XLSX.utils.decode_range(worksheet['!ref']);
 
-        if (headerCell) {
-          const header = String(headerCell.w || headerCell.v);
-          row[header] = cell ? (cell.w || cell.v) : null;
+        for (let R = range.s.r + 1; R <= range.e.r; ++R) {
+          const row = {};
+          for (let C = range.s.c; C <= range.e.c; ++C) {
+            const cellAddress = XLSX.utils.encode_cell({ r: R, c: C });
+            const headerAddress = XLSX.utils.encode_cell({ r: range.s.r, c: C });
+
+            const cell = worksheet[cellAddress];
+            const headerCell = worksheet[headerAddress];
+
+            if (headerCell) {
+              const header = String(headerCell.w || headerCell.v);
+              row[header] = cell ? (cell.w || cell.v) : null;
+            }
+          }
+          const isEmpty = Object.values(row).every(value => value === null || value === '');
+          if (!isEmpty) {
+            result.push(row);
+          }
         }
-      }
-      // Check if all values are null or empty
-      const isEmpty = Object.values(row).every(value => value === null || value === '');
+        return result;
+      };
 
-      // If any value is non-null/non-empty, push the order to the array
-      if (!isEmpty) {
-        if (Object.keys(row).length) result.push(row);
-      }
+      jsonData = sheetToJsonUsingW(worksheet);
     }
-    return result;
-  }
-  const jsonData = sheetToJsonUsingW(sheet);
 
-    const orders:any = [];
+    // Process orders
     jsonData.forEach((row) => {
       let orderDate = row['Order Date'] || null;
       if (orderDate) {
-        // Assuming the date is in the format 'YYYY/MM/DD HH:mm'
         const dateParts = orderDate.split(" ");
         const [year, month, day] = dateParts[0].split("/");
         const time = dateParts[1];
-
-        // Construct the date in 'YYYY-MM-DD HH:mm:ss' format
-        orderDate = `${year}-${month}-${day} ${time}:00`;  // Adding seconds to match DATETIME format
+        orderDate = `${year}-${month}-${day} ${time}:00`;
       }
       let desiredDeliveryDate = row['Desired Delivery Date'] || null;
       if (desiredDeliveryDate) {
-        // Assuming the date is in the format 'YYYY/MM/DD HH:mm'
         const dateParts = desiredDeliveryDate.split(" ");
         const [year, month, day] = dateParts[0].split("/");
-
-        // Construct the date in 'YYYY-MM-DD HH:mm:ss' format
-        desiredDeliveryDate = `${year}-${month}-${day}`;  // Adding seconds to match DATETIME format
+        desiredDeliveryDate = `${year}-${month}-${day}`;
       }
-      const order = { SystemUploadDate: new Date().toISOString(), OrderDate: orderDate, OrderNo: row['Order No.'] || null, ProductCode: row['Product code'] || null, Quantity: row['Quantity'] || null, CustomerCode: row['Customer code'] || null, Message: row['Message'] || null, DesiredDeliveryDate: desiredDeliveryDate, DesiredDeliveryTime: row['Desired Delivery Time'] || null, fileId: fileId};
+      const order = {
+        SystemUploadDate: new Date().toISOString(),
+        OrderDate: orderDate,
+        OrderNo: row['Order No.'] || null,
+        ProductCode: row['Product code'] || null,
+        Quantity: row['Quantity'] || null,
+        CustomerCode: row['Customer code'] || null,
+        Message: row['Message'] || null,
+        DesiredDeliveryDate: desiredDeliveryDate,
+        DesiredDeliveryTime: row['Desired Delivery Time'] || null,
+        fileId: fileId
+      };
       orders.push(order);
     });
 
-    console.log("orders",jsonData,orders)
-
-    // Step 4: Insert all rows into `uploadedOrderData` table in bulk
+    // Insert orders into `uploadedOrderData` table
     const insertPromises = orders.map(order => {
       return c.env.DB.prepare(`
         INSERT INTO uploadedOrderData 
           (SystemUploadDate, OrderDate, OrderNo, ProductCode, Quantity, CustomerCode, Message, DesiredDeliveryDate, DesiredDeliveryTime, status, fileId)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .bind( order.SystemUploadDate, order.OrderDate, order.OrderNo, order.ProductCode, order.Quantity, order.CustomerCode, order.Message, order.DesiredDeliveryDate, order.DesiredDeliveryTime, "new", order.fileId)
-      .run();
+        .bind(order.SystemUploadDate, order.OrderDate, order.OrderNo, order.ProductCode, order.Quantity, order.CustomerCode, order.Message, order.DesiredDeliveryDate, order.DesiredDeliveryTime, "new", order.fileId)
+        .run();
     });
 
     try {
@@ -258,15 +410,16 @@ app.post('/uploadOrderData', async (c) => {
       await c.env.DB.prepare(`
           DELETE FROM orderdata WHERE id = ?
       `)
-      .bind(fileId)
-      .run();    
-      console.log(error)
+        .bind(fileId)
+        .run();
+      console.log(error);
       return c.json({ message: "Error inserting order data", error }, 500);
     }
   } else {
     return c.json({ error: "No file uploaded" }, 400);
   }
 });
+
 
 // Get uploaded orders with pagination
 app.options('/getUploadedOrders', async (c) => {
@@ -483,6 +636,151 @@ app.options('/ShipmentData', async (c) => {
   return c.json({}, 200);
 });
 
+// app.post('/ShipmentData', async (c) => {
+//   // Add CORS headers
+//   c.header('Access-Control-Allow-Origin', '*');
+//   c.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
+//   c.header('Access-Control-Allow-Headers', '*');
+  
+//   const form = await c.req.formData();
+//   const file = form.get("file");
+  
+//   if (file instanceof File) {
+//     const buffer = await file.arrayBuffer();
+//     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+//     const fileName = `${file.name}_${timestamp}`;
+//     const fileSize = buffer.byteLength;
+//     const uploadStatus = "Success";
+
+//     // // Step 1: Upload the file to R2 bucket
+//     // await c.env.FILE_BUCKET.put(fileName, buffer);
+
+//     // Step 2: Insert file details into `orderdata` table
+//     const insertFileResult = await c.env.DB.prepare(`
+//       INSERT INTO shipmentavailabledata (fileName, uploadDate, uploadStatus, fileSize)
+//       VALUES (?, CURRENT_TIMESTAMP, ?, ?)
+//       RETURNING id, fileName, uploadDate, uploadStatus, fileSize
+//     `)
+//     .bind(fileName, uploadStatus, fileSize)
+//     .run();
+
+//     if (!insertFileResult.success) {
+//       return c.json({ message: "Failed to insert file shipment available data", error: insertFileResult.error }, 500);
+//     }
+
+//     // Get the fileId of the newly inserted file
+//     const fileId = insertFileResult.results[0].id;
+//     const workbook = XLSX.read(buffer, { type: "array" });
+//     const sheetName = workbook.SheetNames[0]; // Get the first sheet
+//     const worksheet = workbook.Sheets[sheetName];
+
+//   // Load the workbook
+//   const sheet = workbook.Sheets[workbook.SheetNames[0]];
+//   function sheetToJsonUsingW(worksheet) {
+//     const result = [];
+//     const range = XLSX.utils.decode_range(worksheet['!ref']);
+
+//     for (let R = range.s.r + 1; R <= range.e.r; ++R) {
+//       const row = {};
+//       for (let C = range.s.c; C <= range.e.c; ++C) {
+//         const cellAddress = XLSX.utils.encode_cell({ r: R, c: C });
+//         const headerAddress = XLSX.utils.encode_cell({ r: range.s.r, c: C });
+
+//         const cell = sheet[cellAddress];
+//         const headerCell = sheet[headerAddress];
+
+//         if (headerCell) {
+//           const header = String(headerCell.w || headerCell.v);
+//           row[header] = cell ? (cell.w || cell.v) : null;
+//         }
+//       }
+//       if (Object.keys(row).length) result.push(row);
+//     }
+//     return result;
+//   }
+//   const jsonData = sheetToJsonUsingW(sheet);
+
+//   const shipments: any = [];
+//   jsonData.forEach((row) => {
+//     const shipment = {
+//       farm_name: row['農園名'] || null, // "Farm Name"
+//       timestamp: new Date().toISOString(), // Current timestamp
+//       shipment_status: row['出荷可能もしくは不可でしょうか？'] || null, // "Shipment Status"
+//       target_shipping_date: row['出荷対象日を入力してください。'] || null, // "Target Shipping Date"
+//       non_standard_large_boxes: row['規格外（大）箱数'] || 0, // "Non-standard Large Boxes"
+//       non_standard_medium_boxes: row['規格外（中）箱数'] || 0, // "Non-standard Medium Boxes"
+//       non_standard_small_boxes: row['規格外（小）箱数'] || 0, // "Non-standard Small Boxes"
+//       three_la: row['3LA'] || 0,
+//       three_lb: row['3LB'] || 0,
+//       two_la: row['2LA'] || 0,
+//       two_lb: row['2LB'] || 0,
+//       la: row['LA'] || 0,
+//       lb: row['LB'] || 0,
+//       ma: row['MA'] || 0,
+//       mb: row['MB'] || 0,
+//       sa: row['SA'] || 0,
+//       sb: row['SB'] || 0,
+//       fileId: fileId, // Reference to the uploaded file
+//     };
+//     shipments.push(shipment);
+//   });
+  
+//   console.log(shipments);
+  
+
+    
+
+//     // Step 4: Insert all rows into `shipmentavailable` table in bulk
+//   const insertShipmentPromises = shipments.map(shipment => {
+//     return c.env.DB.prepare(`
+//       INSERT INTO shipmentavailable 
+//         (farm_name, timestamp, shipment_status, target_shipping_date, non_standard_large_boxes, non_standard_medium_boxes, non_standard_small_boxes, three_la, three_lb, two_la, two_lb, la, lb, ma, mb, sa, sb, fileId)
+//       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+//     .bind(
+//       shipment.farm_name,
+//       shipment.timestamp,
+//       shipment.shipment_status,
+//       shipment.target_shipping_date,
+//       shipment.non_standard_large_boxes,
+//       shipment.non_standard_medium_boxes,
+//       shipment.non_standard_small_boxes,
+//       shipment.three_la,
+//       shipment.three_lb,
+//       shipment.two_la,
+//       shipment.two_lb,
+//       shipment.la,
+//       shipment.lb,
+//       shipment.ma,
+//       shipment.mb,
+//       shipment.sa,
+//       shipment.sb,
+//       shipment.fileId
+//     )
+//     .run();
+//   });
+
+//   // Execute all insert queries
+// Promise.all(insertShipmentPromises)
+// .then(() => console.log('All shipments inserted successfully!'))
+// .catch(err => console.error('Error inserting shipments:', err));
+
+//     try {
+//       await Promise.all(insertShipmentPromises);
+//       return c.json({ message: "File uploaded and shipment data stored successfully!" }, 200);
+//     } catch (error) {
+//       await c.env.DB.prepare(`
+//           DELETE FROM shipmentavailabledata WHERE id = ?
+//       `)
+//       .bind(fileId)
+//       .run();    
+//       console.log(error)
+//       return c.json({ message: "Error inserting shipment data", error }, 500);
+//     }
+//   } else {
+//     return c.json({ error: "No file uploaded" }, 400);
+//   }
+// });
+
 app.post('/ShipmentData', async (c) => {
   // Add CORS headers
   c.header('Access-Control-Allow-Origin', '*');
@@ -499,10 +797,7 @@ app.post('/ShipmentData', async (c) => {
     const fileSize = buffer.byteLength;
     const uploadStatus = "Success";
 
-    // // Step 1: Upload the file to R2 bucket
-    // await c.env.FILE_BUCKET.put(fileName, buffer);
-
-    // Step 2: Insert file details into `orderdata` table
+    // Step 1: Insert file details into `shipmentavailabledata` table
     const insertFileResult = await c.env.DB.prepare(`
       INSERT INTO shipmentavailabledata (fileName, uploadDate, uploadStatus, fileSize)
       VALUES (?, CURRENT_TIMESTAMP, ?, ?)
@@ -517,116 +812,131 @@ app.post('/ShipmentData', async (c) => {
 
     // Get the fileId of the newly inserted file
     const fileId = insertFileResult.results[0].id;
-    const workbook = XLSX.read(buffer, { type: "array" });
-    const sheetName = workbook.SheetNames[0]; // Get the first sheet
-    const worksheet = workbook.Sheets[sheetName];
 
-  // Load the workbook
-  const sheet = workbook.Sheets[workbook.SheetNames[0]];
-  function sheetToJsonUsingW(worksheet) {
-    const result = [];
-    const range = XLSX.utils.decode_range(worksheet['!ref']);
+    // Determine file type
+    const fileExtension = file.name.split('.').pop().toLowerCase();
 
-    for (let R = range.s.r + 1; R <= range.e.r; ++R) {
-      const row = {};
-      for (let C = range.s.c; C <= range.e.c; ++C) {
-        const cellAddress = XLSX.utils.encode_cell({ r: R, c: C });
-        const headerAddress = XLSX.utils.encode_cell({ r: range.s.r, c: C });
+    let shipments = [];
+    if (fileExtension === 'xlsx' || fileExtension === 'xls') {
+      // Process Excel file
+      const workbook = XLSX.read(buffer, { type: "array" });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
 
-        const cell = sheet[cellAddress];
-        const headerCell = sheet[headerAddress];
+      shipments = XLSX.utils.sheet_to_json(sheet, { raw: false }).map((row) => ({
+        farm_name: row['農園名'] || null, // "Farm Name"
+        timestamp: new Date().toISOString(),
+        shipment_status: row['出荷可能もしくは不可でしょうか？'] || null,
+        target_shipping_date: row['出荷対象日を入力してください。'] || null,
+        non_standard_large_boxes: row['規格外（大）箱数'] || 0,
+        non_standard_medium_boxes: row['規格外（中）箱数'] || 0,
+        non_standard_small_boxes: row['規格外（小）箱数'] || 0,
+        three_la: row['3LA'] || 0,
+        three_lb: row['3LB'] || 0,
+        two_la: row['2LA'] || 0,
+        two_lb: row['2LB'] || 0,
+        la: row['LA'] || 0,
+        lb: row['LB'] || 0,
+        ma: row['MA'] || 0,
+        mb: row['MB'] || 0,
+        sa: row['SA'] || 0,
+        sb: row['SB'] || 0,
+        two_sa: row['2SA'] || 0,
+        two_sb: row['2SB'] || 0,
+        forChinese: row['中華用'] || 0,
+        fileId,
+      }));
+    } else if (fileExtension === 'csv') {
+      // Process CSV file
+      const csvData = new TextDecoder().decode(buffer);
+      const filteredRows = csvData.split('\n').filter((row) => row.trim() !== "");
+      const rows = filteredRows.map((row) => row.split(','));
+      const headers = rows.shift();
 
-        if (headerCell) {
-          const header = String(headerCell.w || headerCell.v);
-          row[header] = cell ? (cell.w || cell.v) : null;
-        }
-      }
-      if (Object.keys(row).length) result.push(row);
+      shipments = rows.map((row) => {
+        const shipment = {};
+        headers.forEach((header, index) => {
+          shipment[header.trim()] = row[index]?.trim() || null;
+        });
+
+        return {
+          farm_name: shipment['農園名'] || null,
+          timestamp: new Date().toISOString(),
+          shipment_status: shipment['出荷可能もしくは不可でしょうか？'] || null,
+          target_shipping_date: shipment['出荷対象日を入力してください。'] || null,
+          non_standard_large_boxes: shipment['規格外（大）箱数'] || 0,
+          non_standard_medium_boxes: shipment['規格外（中）箱数'] || 0,
+          non_standard_small_boxes: shipment['規格外（小）箱数'] || 0,
+          three_la: shipment['3LA'] || 0,
+          three_lb: shipment['3LB'] || 0,
+          two_la: shipment['2LA'] || 0,
+          two_lb: shipment['2LB'] || 0,
+          la: shipment['LA'] || 0,
+          lb: shipment['LB'] || 0,
+          ma: shipment['MA'] || 0,
+          mb: shipment['MB'] || 0,
+          sa: shipment['SA'] || 0,
+          sb: shipment['SB'] || 0,
+          two_sa: shipment['2SA'] || 0,
+          two_sb: shipment['2SB'] || 0,
+          forChinese: shipment['中華用'] || 0,
+          fileId,
+        };
+      });
+      // console.log("shipments:",shipments)
+    } else {
+      return c.json({ error: "Unsupported file type" }, 400);
     }
-    return result;
-  }
-  const jsonData = sheetToJsonUsingW(sheet);
 
-  const shipments: any = [];
-  jsonData.forEach((row) => {
-    const shipment = {
-      farm_name: row['農園名'] || null, // "Farm Name"
-      timestamp: new Date().toISOString(), // Current timestamp
-      shipment_status: row['出荷可能もしくは不可でしょうか？'] || null, // "Shipment Status"
-      target_shipping_date: row['出荷対象日を入力してください。'] || null, // "Target Shipping Date"
-      non_standard_large_boxes: row['規格外（大）箱数'] || 0, // "Non-standard Large Boxes"
-      non_standard_medium_boxes: row['規格外（中）箱数'] || 0, // "Non-standard Medium Boxes"
-      non_standard_small_boxes: row['規格外（小）箱数'] || 0, // "Non-standard Small Boxes"
-      three_la: row['3LA'] || 0,
-      three_lb: row['3LB'] || 0,
-      two_la: row['2LA'] || 0,
-      two_lb: row['2LB'] || 0,
-      la: row['LA'] || 0,
-      lb: row['LB'] || 0,
-      ma: row['MA'] || 0,
-      mb: row['MB'] || 0,
-      sa: row['SA'] || 0,
-      sb: row['SB'] || 0,
-      fileId: fileId, // Reference to the uploaded file
-    };
-    shipments.push(shipment);
-  });
-  
-  console.log(shipments);
-  
-
-    
-
-    // Step 4: Insert all rows into `shipmentavailable` table in bulk
-  const insertShipmentPromises = shipments.map(shipment => {
-    return c.env.DB.prepare(`
-      INSERT INTO shipmentavailable 
-        (farm_name, timestamp, shipment_status, target_shipping_date, non_standard_large_boxes, non_standard_medium_boxes, non_standard_small_boxes, three_la, three_lb, two_la, two_lb, la, lb, ma, mb, sa, sb, fileId)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .bind(
-      shipment.farm_name,
-      shipment.timestamp,
-      shipment.shipment_status,
-      shipment.target_shipping_date,
-      shipment.non_standard_large_boxes,
-      shipment.non_standard_medium_boxes,
-      shipment.non_standard_small_boxes,
-      shipment.three_la,
-      shipment.three_lb,
-      shipment.two_la,
-      shipment.two_lb,
-      shipment.la,
-      shipment.lb,
-      shipment.ma,
-      shipment.mb,
-      shipment.sa,
-      shipment.sb,
-      shipment.fileId
-    )
-    .run();
-  });
-
-  // Execute all insert queries
-Promise.all(insertShipmentPromises)
-.then(() => console.log('All shipments inserted successfully!'))
-.catch(err => console.error('Error inserting shipments:', err));
-
+    // Insert all rows into `shipmentavailable` table
     try {
-      await Promise.all(insertShipmentPromises);
+      const insertShipmentPromises = shipments.map((shipment) =>
+        c.env.DB.prepare(`
+          INSERT INTO shipmentavailable 
+          (farm_name, timestamp, shipment_status, target_shipping_date, non_standard_large_boxes, non_standard_medium_boxes, non_standard_small_boxes, three_la, three_lb, two_la, two_lb, la, lb, ma, mb, sa, sb, two_sa, two_sb, forChinese, fileId)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .bind(
+          shipment.farm_name,
+          shipment.timestamp,
+          shipment.shipment_status,
+          shipment.target_shipping_date,
+          shipment.non_standard_large_boxes,
+          shipment.non_standard_medium_boxes,
+          shipment.non_standard_small_boxes,
+          shipment.three_la,
+          shipment.three_lb,
+          shipment.two_la,
+          shipment.two_lb,
+          shipment.la,
+          shipment.lb,
+          shipment.ma,
+          shipment.mb,
+          shipment.sa,
+          shipment.sb,
+          shipment.two_sa,
+          shipment.two_sb,
+          shipment.forChinese,
+          shipment.fileId
+        )
+        .run()
+      );
+
+      const result = await Promise.all(insertShipmentPromises);
+
       return c.json({ message: "File uploaded and shipment data stored successfully!" }, 200);
     } catch (error) {
-      await c.env.DB.prepare(`
-          DELETE FROM shipmentavailabledata WHERE id = ?
-      `)
-      .bind(fileId)
-      .run();    
-      console.log(error)
+      await c.env.DB.prepare(`DELETE FROM shipmentavailabledata WHERE id = ?`)
+        .bind(fileId)
+        .run();
+
+      console.log("error",error)
+
       return c.json({ message: "Error inserting shipment data", error }, 500);
     }
   } else {
     return c.json({ error: "No file uploaded" }, 400);
   }
 });
+
 
 // Get Shipment data with pagination
 app.options('/ShipmentData', async (c) => {
@@ -953,7 +1263,8 @@ app.get('/executeAllocation', async (c) => {
 
     const productSizeMap = {};
     productRules.results.forEach((rule) => {
-      productSizeMap[rule.ProductCode] = rule.size;
+      console.log(rule,rule.product_code,rule.size)
+      productSizeMap[rule.product_code] = rule.size;
     });
 
     const executedOrders = [];
@@ -1018,15 +1329,19 @@ app.get('/executeAllocation', async (c) => {
     // }
 
     // Define size hierarchy and mapping for starting points
-const sizeHierarchy = ['3LA', '3LB', '2LA', '2LB', 'LA', 'LB', 'MA', 'MB', 'SA', 'SB', '2SA', '2SB'];
-const sizeStartMap = {
-  'L': ['5L', '4L', '3L', '2L', 'L'], // Start from '5L' for 'L'
-  'M': ['3L', '2L', 'L', 'M'],        // Start from '3L' for 'M'
-  'S': ['2L', 'L', 'M', 'S'],         // Start from '2L' for 'S'
-  '訳あり中': ['訳あり中'],
-  '訳あり小': ['訳あり小'],
-  '訳あり大': ['訳あり大'],
-};
+    const sizeHierarchy = ['3LA', '3LB', '2LA', '2LB', 'LA', 'LB', 'MA', 'MB', 'SA', 'SB', '2SA', '2SB'];
+    const sizeStartMap = {
+      '5L': ['5LA', '5LB'],
+      '4L': ['4LA', '4LB'],
+      '3L': ['3LA', '3LB'],
+      '2L': ['2LA', '2LB'],
+      'L': ['LA', 'LB'],
+      'M': ['MA','MB'],
+      'S': ['SA','SB'],
+      '訳あり中': ['訳あり中'],
+      '訳あり小': ['訳あり小'],
+      '訳あり大': ['訳あり大'],
+    };
 
 // Map size names to database column names
 const sizeToColumnMap = {
@@ -1043,7 +1358,7 @@ const sizeToColumnMap = {
   'MB': 'mb',
   'SA': 'sa',
   'SB': 'sb',
-  '2SA': 'sa', // Adjust if 2SA/2SB is the same as SA/SB
+  '2SA': 'sa',
   '2SB': 'sb',
 };
 
@@ -1057,11 +1372,13 @@ const getSizeAllocationOrder = (productSize) => {
 };
 
 for (const order of orders.results) {
+  console.log(order,productSizeMap)
   const productSize = productSizeMap[order.ProductCode];
   let allocated = false;
 
   // Get the size allocation order based on the product size
   const allocationSizes = getSizeAllocationOrder(productSize);
+  console.log("product size, allocation sizes",productSize,allocationSizes);
 
   // Try allocation for each shipment
   for (const shipment of shipments.results) {
@@ -1113,50 +1430,50 @@ for (const order of orders.results) {
   }
 
   // Check for next-day shipment if not allocated
-  if (!allocated) {
-    const nextDayShipments = shipmentsNextDay.results;
+  // if (!allocated) {
+  //   const nextDayShipments = shipmentsNextDay.results;
 
-    for (const shipment of nextDayShipments) {
-      for (const size of allocationSizes) {
-        const columnName = sizeToColumnMap[size]; // Map size to column name
+  //   for (const shipment of nextDayShipments) {
+  //     for (const size of allocationSizes) {
+  //       const columnName = sizeToColumnMap[size]; // Map size to column name
 
-        if (columnName && shipment[columnName] && shipment[columnName] >= order.Quantity) {
-          // Deduct quantity from next-day shipment
-          await db.prepare(`
-            UPDATE shipmentavailable
-            SET ${columnName} = ${columnName} - ?
-            WHERE id = ?
-          `).bind(order.Quantity, shipment.id).run();
+  //       if (columnName && shipment[columnName] && shipment[columnName] >= order.Quantity) {
+  //         // Deduct quantity from next-day shipment
+  //         await db.prepare(`
+  //           UPDATE shipmentavailable
+  //           SET ${columnName} = ${columnName} - ?
+  //           WHERE id = ?
+  //         `).bind(order.Quantity, shipment.id).run();
 
-          // Insert into executedOrder table
-          await db.prepare(`
-            INSERT INTO executedOrderData (orderId, farm_name, size, quantity)
-            VALUES (?, ?, ?, ?)
-          `).bind(order.orderId, shipment.farm_name, size, order.Quantity).run();
+  //         // Insert into executedOrder table
+  //         await db.prepare(`
+  //           INSERT INTO executedOrderData (orderId, farm_name, size, quantity)
+  //           VALUES (?, ?, ?, ?)
+  //         `).bind(order.orderId, shipment.farm_name, size, order.Quantity).run();
 
-          // Update order status to allocated
-          await db.prepare(`
-            UPDATE uploadedOrderData
-            SET status = 'allocated'
-            WHERE id = ?
-          `).bind(order.orderId).run();
+  //         // Update order status to allocated
+  //         await db.prepare(`
+  //           UPDATE uploadedOrderData
+  //           SET status = 'allocated'
+  //           WHERE id = ?
+  //         `).bind(order.orderId).run();
 
-          executedOrders.push({
-            orderId: order.orderId,
-            farm_name: shipment.farm_name,
-            size: size,
-            quantity: order.Quantity,
-          });
+  //         executedOrders.push({
+  //           orderId: order.orderId,
+  //           farm_name: shipment.farm_name,
+  //           size: size,
+  //           quantity: order.Quantity,
+  //         });
 
-          allocated = true;
-          order.status = 'allocated'; // Update the order object for frontend
-          break;
-        }
-      }
+  //         allocated = true;
+  //         order.status = 'allocated'; // Update the order object for frontend
+  //         break;
+  //       }
+  //     }
 
-      if (allocated) break;
-    }
-  }
+  //     if (allocated) break;
+  //   }
+  // }
 
   // If not allocated, mark the order as allocation_failed
   if (!allocated) {
@@ -1750,6 +2067,28 @@ app.options('/getDeliveryDate', async (c) => {
   c.header('Access-Control-Allow-Headers', '*');
   return c.json({}, 200); 
 });
+
+app.get('/getDeliveryDate', async (c) => {
+  // Add CORS headers
+  c.header('Access-Control-Allow-Origin', '*');
+  c.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  c.header('Access-Control-Allow-Headers', '*');
+
+  // Fetch all records from uploadedOrderData joined with masterData
+  const orders = await c.env.DB.prepare(`
+    SELECT 
+      u.*, 
+      m.*
+    FROM 
+      uploadedOrderData u
+    JOIN 
+      masterData m 
+      ON m.orderID = u.CustomerCode
+  `).all();
+
+  return c.json({ orders }, 200);
+});
+
 
 // Get uploaded orders with pagination
 app.get('/getUploadedMasterData', async (c) => {

@@ -392,6 +392,9 @@ CREATE TABLE shipmentavailable (
     mb INT DEFAULT 0,                          -- MB box count
     sa INT DEFAULT 0,                          -- SA box count
     sb INT DEFAULT 0,
+    two_sa INT DEFAULT 0,
+    two_sb INT DEFAULT 0,
+    forChinese INT DEFAULT 0,
     fileId INT,                                -- Foreign key referencing shipmentavailabledata
     -- PRIMARY KEY (farm_name, timestamp),  
     CONSTRAINT fk_file FOREIGN KEY (fileId) REFERENCES shipmentavailabledata (id) 
