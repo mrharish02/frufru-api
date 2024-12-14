@@ -1589,6 +1589,97 @@ app.get('/allocateDeliveryDate', async (c) => {
   return c.json({updatedRecords}, 200);
 });
 
+// Check allocation
+app.options('/checkAllocation', async (c) => {
+  // Set CORS headers for preflight request
+  c.header('Access-Control-Allow-Origin', '*');
+  c.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  c.header('Access-Control-Allow-Headers', '*');
+  return c.json({}, 200);
+});
+
+app.get('/checkAllocation', async (c) => {
+  // Add CORS headers
+  c.header('Access-Control-Allow-Origin', '*');
+  c.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  c.header('Access-Control-Allow-Headers', '*');
+
+  const orders = await c.env.DB.prepare(`select * FROM uploadedOrderData u  JOIN masterData m ON u.CustomerCode = m.orderID  JOIN jfMaster p ON m.perfecture = p.location`)
+  .all();
+  const orderData = orders.results;
+
+  const allocationSettings = await c.env.DB.prepare(`SELECT * FROM AllocationSettings where SID is 1`).all();
+
+  const allocationSettingsData = allocationSettings.results;
+
+  const boxCountBound = allocationSettingsData[0].BoxCount;
+  const duplicateOrderAlertBound = allocationSettingsData[0].DuplicateOrderAlert * 60 * 1000;
+  console.log(typeof(duplicateOrderAlertBound),duplicateOrderAlertBound,allocationSettingsData.DuplicateOrderAlert)
+
+  const filteredOrders = orderData.filter(order => order.Quantity > boxCountBound);
+
+  // Function to parse 'YYYY-MM-DD HH:mm:ss' format into Date object
+function parseCustomDate(dateStr) {
+  const [datePart, timePart] = dateStr.split(' ');
+  const [year, month, day] = datePart.split('-').map(Number);
+  const [hours, minutes, seconds] = timePart.split(':').map(Number);
+  return new Date(year, month - 1, day, hours, minutes, seconds);
+}
+
+// Function to find orders with same customer and time difference less than the given bound
+function findOrdersWithinTimeBound(orderData, duplicateOrderAlertBound) {
+  const result = [];
+
+  // Group orders by CustomerCode
+  const ordersByCustomer = orderData.reduce((acc, order) => {
+      if (!acc[order.CustomerCode]) {
+          acc[order.CustomerCode] = [];
+      }
+      acc[order.CustomerCode].push(order);
+      return acc;
+  }, {});
+
+  // Check each customer's orders
+  for (const CustomerCode in ordersByCustomer) {
+      const customerOrders = ordersByCustomer[CustomerCode];
+
+      // Sort orders by orderDate
+      customerOrders.sort((a, b) => parseCustomDate(a.OrderDate) - parseCustomDate(b.OrderDate));
+      // console.log(customerOrders)
+
+      // Compare time difference between consecutive orders
+      for (let i = 0; i < customerOrders.length - 1; i++) {
+          const currentOrder = customerOrders[i];
+          const nextOrder = customerOrders[i + 1];
+
+          const timeDiff = parseCustomDate(nextOrder.OrderDate) - parseCustomDate(currentOrder.OrderDate);
+
+          if (timeDiff <= duplicateOrderAlertBound) {
+              result.push({
+                CustomerCode,
+                  orders: [currentOrder, nextOrder],
+                  timeDiff: timeDiff / (60 * 60 * 1000), // Convert to hours
+              });
+          }
+      }
+  }
+
+  return result;
+}
+
+const matchedOrders = findOrdersWithinTimeBound(orderData, duplicateOrderAlertBound);
+
+
+  console.log(boxCountBound,duplicateOrderAlertBound);
+
+
+  
+  
+
+  // return c.json({status:"success",orders,allocationSettingsData,filteredOrders,boxCountBoundError:filteredOrders.length}, 200);
+  return c.json({status:"success",matchedOrders}, 200);
+});
+
 app.options('/masterData', async (c) => {
   // Set CORS headers for preflight request
   c.header('Access-Control-Allow-Origin', '*');

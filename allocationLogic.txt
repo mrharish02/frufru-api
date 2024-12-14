@@ -1,0 +1,40 @@
+1. Data Retrieval
+   - Fetch pending orders:
+     - Retrieve orders with status `'new'`.
+     - Join with customer master data to get customer preferences (e.g., rank, prohibited farms, flexibility in variety/size).
+     - Orders are sorted by `DesiredDeliveryDate` (ascending) and `customerRank` (descending).
+   - Fetch shipment availability:
+     - Retrieve shipments with status `'出荷可能です。'`.
+     - Sort by `target_shipping_date` (ascending) and `farm_name`.
+   - Fetch product size mappings:
+     - Map product codes to their associated sizes for allocation logic.
+
+
+2. Allocation Logic
+   - Size allocation hierarchy:
+     - Define a hierarchy of sizes for allocation, first the size corresponding to the given product code, then smaller sizes.
+   - Prohibited checks:
+     - Skip shipments from prohibited farms as per customer preferences.
+   - Allocate order quantities:
+     - Match orders with available shipment sizes using the defined hierarchy.
+     - Deduct allocated quantities from shipment stock.
+     - Log allocations into the `executedOrderData` table.
+     - Mark orders as `'allocated'` if successful.
+   - Fallback to stock shortage:
+     - If no matching shipment size is available, mark the order as `'stock_shortage'` and status as `'pending'`.
+     
+     
+   - Mixed allocation is pending
+     - If full quantity is not available the quantity from required size will be allocated and then remaining will be done from smaller sizes.
+
+
+3. Database Updates
+   - Update shipment availability to reflect allocated quantities.
+   - Record executed orders in a separate table.
+   - Update order status to reflect allocation outcomes (`'allocated'` or `'pending'`).
+
+
+4. Finalization
+   - Return:
+     - Updated orders list (with allocation statuses).
+     - List of executed orders (successful allocations) for frontend usage.
